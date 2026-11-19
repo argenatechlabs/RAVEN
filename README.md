@@ -388,6 +388,32 @@ Tüm anahtarlar `.env`'e yazılabilir; `cp .env.example .env` ile başlayın.
 | AI sağlayıcısı listede "✓" yok | Anahtar/URL eksik | Modal'dan anahtar girin ya da `.env`'e ekleyip yeniden başlatın |
 | 9.000+ imza taraması beklediğim gibi çalışmıyor | nuclei şablonları indirilemedi | Konteynerde `nuclei -update-templates` çalıştırın; loglara bakın |
 
+### Docker Hub'a ulaşılamıyorsa (bölgesel engelleme / MTU)
+
+`failed to copy … EOF` hatası büyük imaj katmanları indirilirken bağlantının
+kesilmesidir. Tekrarlanıyorsa sırayla deneyin:
+
+1. **Registry mirror (en etkili):** Docker Desktop → Settings → Docker Engine
+   JSON'una yazın, **Apply & Restart** yapın:
+   ```json
+   {
+     "registry-mirrors": ["https://docker.m.daocloud.io"],
+     "dns": ["8.8.8.8", "1.1.1.1"]
+   }
+   ```
+   Mirror değişirse `https://docker.1ms.run` veya
+   `https://docker.mirrors.ustc.edu.cn` deneyin. Sonra:
+   `docker pull postgres:15-alpine` ve `docker compose up --build`.
+2. **MTU (VPN/kablosuzda büyük paketin kesilmesi):**
+   ```bash
+   netsh interface ipv4 show subinterfaces
+   netsh interface ipv4 set subinterface "Wi-Fi" mtu=1400 store=persistent
+   ```
+3. **IPv6:** Windows'ta ağ bağdaştırıcısı özelliklerinden IPv6'nın işaretini
+   kaldırın (veya Docker Engine JSON'una `"ipv6": false` ekleyin).
+4. **Ağı izole etme:** Aynı `docker pull`'u telefon hotspot ile deneyin.
+   Düzeliyorsa sorun ISP/şirket ağındadır → mirror veya VPN kullanın.
+
 Logları canlı izlemek için:
 
 ```bash
