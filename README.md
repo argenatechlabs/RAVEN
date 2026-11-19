@@ -379,6 +379,7 @@ Tüm anahtarlar `.env`'e yazılabilir; `cp .env.example .env` ile başlayın.
 | --- | --- | --- |
 | `docker compose up` "port is already allocated" | 3000/8000/5432/6379 dolu | `docker compose down` sonra başka servisleri durdurun; ya da `docker-compose.yml`'de portları değiştirin |
 | İlk build çok uzun sürüyor / binary indirme hatası | Ağ github release'lerine kısıtlı | İnterneti kontrol edin; binary'leri manuel indirip `SCANNER_BIN_DIR`'e göre `.env`'e ekleyin |
+| `docker compose up` imaj çekerken `failed to copy … EOF` | Docker Hub CDN/ağ kopması (geçici) | Önce aynı komutu tekrar deneyin; `docker pull postgres:15-alpine` ile tek başına indirip test edin; Docker Desktop'ı yeniden başlatın; VPN/proxy'i kapatın ya da Docker Desktop → Settings → Resources → Proxies'e ekleyin; DNS'i `8.8.8.8`/`1.1.1.1` yapın; hâlâ düzelmezse `docker system prune -a` ve Docker Desktop'ı fabrika ayarlarına döndürün |
 | Frontend "Internal Server Error" | Backend değil / build'de `BACKEND_URL` yanlış | `docker compose logs backend`; frontend build arg'ı `http://backend:8000` olmalı |
 | Tarama "failed" oluyor | Tarayıcı hatası / hedef yok | Tarama sayfasındaki loglara bakın; `docker compose logs backend --tail=100` |
 | Bulgular "yerel analiz" diyor | AI anahtarı yok/hatalı veya ağ hatası | Bölüm 4; `GET /api/settings` ile durumu kontrol edin |
