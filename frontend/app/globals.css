@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: #0a0a0a;
+  color: #e4e4e7;
+  min-height: 100%;
+}
+
+body {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0, 255, 65, 0.08), transparent),
+    linear-gradient(rgba(0, 255, 65, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 65, 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 42px 42px, 42px 42px;
+}
+
+::selection {
+  background: rgba(0, 255, 65, 0.35);
+  color: #ffffff;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1f1f1f #0a0a0a;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+*::-webkit-scrollbar-thumb {
+  background: #1f1f1f;
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #00b32d;
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border border-line bg-panel/80 backdrop-blur;
+  }
+  .neon-text {
+    @apply text-neon;
+    text-shadow: 0 0 12px rgba(0, 255, 65, 0.45);
+  }
+  .terminal {
+    @apply font-mono text-[12px] leading-5;
+  }
+  .btn-neon {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-neon px-5 py-2.5
+      font-semibold text-black transition hover:shadow-glow hover:brightness-110
+      disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line
+      bg-panel2 px-4 py-2 text-sm text-zinc-300 transition hover:border-neon-dim
+      hover:text-neon disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .input-neon {
+    @apply w-full rounded-lg border border-line bg-black/70 px-4 py-3 font-mono
+      text-neon placeholder:text-zinc-600 focus:border-neon-dim focus:outline-none
+      focus:ring-1 focus:ring-neon-dim;
+  }
+  .label-neon {
+    @apply text-xs font-semibold uppercase tracking-widest text-muted;
+  }
+}

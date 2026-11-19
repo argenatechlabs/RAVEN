@@ -1,0 +1,92 @@
+export type Severity = "critical" | "high" | "medium" | "low" | "info";
+export type ScanStatus = "queued" | "scanning" | "completed" | "failed";
+
+export interface Scan {
+  id: number;
+  target_domain: string;
+  scan_type: "fast" | "deep";
+  status: ScanStatus;
+  progress: number;
+  current_stage: string;
+  risk_score: number;
+  authorized: boolean;
+  error: string | null;
+  meta: {
+    executive_summary?: string;
+    engines?: Record<string, string>;
+    counts?: Record<string, number>;
+  };
+  created_at: string | null;
+  completed_at: string | null;
+  finding_count?: number;
+}
+
+export interface Finding {
+  id: number;
+  scan_id: number;
+  type: string;
+  title: string;
+  severity: Severity;
+  cvss: number | null;
+  url: string | null;
+  evidence: string | null;
+  ai_analysis: string | null;
+  exploit_scenario: string | null;
+  fix_code: string | null;
+  is_false_positive: boolean;
+  owasp_category: string | null;
+  source: string;
+}
+
+export interface Subdomain {
+  id: number;
+  subdomain: string;
+  ip: string | null;
+  is_alive: boolean;
+  technologies: string[];
+  ports: number[];
+  status_code: number | null;
+  title: string | null;
+}
+
+export interface ScanLog {
+  id: number;
+  scan_id: number;
+  level: string;
+  message: string;
+  ts: string | null;
+}
+
+export interface ScanListResponse {
+  items: Scan[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DiffFinding {
+  title: string;
+  url: string;
+  severity: string;
+}
+
+export interface ScanDiff {
+  from: { id: number; domain: string; risk_score: number; created_at: string };
+  to: { id: number; domain: string; risk_score: number; created_at: string };
+  added: DiffFinding[];
+  removed: DiffFinding[];
+  risk_delta: number;
+}
+
+export interface Stats {
+  scan_id: number;
+  status: ScanStatus;
+  progress: number;
+  risk_score: number;
+  severity_counts: Record<string, number>;
+  false_positives: number;
+  subdomains_total: number;
+  subdomains_alive: number;
+  findings_total: number;
+  engines: Record<string, string>;
+}
