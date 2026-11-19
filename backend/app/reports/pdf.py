@@ -100,6 +100,7 @@ def _styles() -> dict:
         "mono": ParagraphStyle(
             "rav-mono", parent=base["Normal"], fontName="Courier",
             fontSize=8, textColor=colors.HexColor("#d1fae5"), leading=10.5,
+            wordWrap="CJK", splitLongWords=1,
         ),
     }
     return styles

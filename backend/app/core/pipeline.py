@@ -95,7 +95,8 @@ class ScanPipeline:
         session.commit()
 
     def _save_findings(self, session: Session, scan: Scan,
-                       vulns: List[VulnResult], secrets: List[SecretResult]) -> List[Finding]:
+                       vulns: List[VulnResult], secrets: List[SecretResult],
+                       engine: str = "nuclei") -> List[Finding]:
         rows: List[Finding] = []
         for v in vulns:
             rows.append(
@@ -107,7 +108,7 @@ class ScanPipeline:
                     cvss=v.cvss,
                     url=v.url,
                     evidence=v.evidence,
-                    source=v.raw.get("engine") or "nuclei",
+                    source=engine,
                     raw={"template_id": v.template_id, "tags": v.tags,
                          "description": v.description},
                 )
@@ -192,7 +193,9 @@ class ScanPipeline:
                 secret_findings, secret_report = secrets.run(ctx, endpoints)
                 logger.info(f"Gizli anahtar motoru: {secret_report.engine} — {secret_report.detail}")
 
-                findings = self._save_findings(session, scan, vulns, secret_findings)
+                findings = self._save_findings(
+                    session, scan, vulns, secret_findings, vuln_report.engine
+                )
                 scan.meta = {
                     **(scan.meta or {}),
                     "engines": {
