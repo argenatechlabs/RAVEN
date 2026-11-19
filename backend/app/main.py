@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import findings, reports, scans
+from app.api import ai_settings, findings, reports, scans
 from app.config import settings
 from app.core.worker import ScanWorker
 from app.database import init_db
@@ -52,13 +52,21 @@ app.add_middleware(
 app.include_router(scans.router)
 app.include_router(findings.router)
 app.include_router(reports.router)
+app.include_router(ai_settings.router)
 
 
 @app.get("/api/health", tags=["meta"])
 def health() -> dict:
+    from app.ai.provider import PROVIDERS
+
+    configured = [
+        pid for pid in PROVIDERS if getattr(settings, f"{pid}_api_key", "")
+    ]
     return {
         "status": "ok",
         "app": settings.app_name,
         "version": VERSION,
         "demo_mode": settings.demo_mode,
+        "ai_provider": settings.ai_provider,
+        "ai_configured_from_env": configured,
     }

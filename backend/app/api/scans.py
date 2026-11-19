@@ -49,6 +49,10 @@ class ScanCreate(BaseModel):
     domain: str = Field(..., min_length=3, max_length=MAX_DOMAIN_LEN)
     scan_type: str = Field("fast", pattern="^(fast|deep)$")
     authorized: bool = False
+    ai_provider: Optional[str] = Field(
+        None, description="openai | anthropic | gemini | xai | openrouter | "
+                          "deepseek | mistral | groq | ollama | custom | local"
+    )
 
 
 class ScanCreated(BaseModel):
@@ -95,7 +99,7 @@ def create_scan(
         progress=0,
         current_stage="queued",
         authorized=True,
-        meta={},
+        meta={"ai_provider": payload.ai_provider} if payload.ai_provider else {},
     )
     db.add(scan)
     db.commit()

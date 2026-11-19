@@ -36,12 +36,36 @@ class Settings(BaseSettings):
     allow_inline_scans: bool = True
 
     # --- AI providers -------------------------------------------------------
-    # auto = OpenAI if a key is set, otherwise Ollama if reachable, else the
-    # deterministic local analysis engine (never fails, always returns data).
-    ai_provider: str = "auto"  # auto | openai | ollama | local
+    # auto = first configured provider (OpenAI, Claude, Gemini, Grok, ...),
+    # otherwise Ollama if reachable, otherwise the deterministic local engine.
+    ai_provider: str = "auto"  # auto | openai | anthropic | gemini | xai | ... | ollama | local
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_base_url: Optional[str] = None
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-5"
+    anthropic_base_url: Optional[str] = None
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_base_url: Optional[str] = None
+    xai_api_key: str = ""
+    xai_model: str = "grok-3"
+    xai_base_url: Optional[str] = None
+    openrouter_api_key: str = ""
+    openrouter_model: str = "anthropic/claude-sonnet-4.5"
+    openrouter_base_url: Optional[str] = None
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-chat"
+    deepseek_base_url: Optional[str] = None
+    mistral_api_key: str = ""
+    mistral_model: str = "mistral-large-latest"
+    mistral_base_url: Optional[str] = None
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+    groq_base_url: Optional[str] = None
+    custom_api_key: str = ""
+    custom_model: str = "gpt-4o-mini"
+    custom_base_url: Optional[str] = None
     ollama_url: str = "http://ollama:11434"
     ollama_model: str = "llama3.1"
     ai_timeout: int = 90

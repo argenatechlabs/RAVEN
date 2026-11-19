@@ -137,9 +137,16 @@ export default function ScanPage() {
             </h1>
             <StatusBadge status={scan?.status ?? "queued"} />
           </div>
-          <p className="mt-1 text-[11px] text-muted">
-            #{id} · {scan?.scan_type === "deep" ? "Derin" : "Hızlı"} ·{" "}
-            {formatDate(scan?.created_at)}
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+            <span>#{id}</span>·
+            <span>{scan?.scan_type === "deep" ? "Derin" : "Hızlı"}</span>·
+            <span>{formatDate(scan?.created_at)}</span>
+            {scan?.meta?.ai && (
+              <span className="rounded border border-neon-dark bg-black/50 px-1.5 py-0.5 font-mono text-[10px] text-neon-dim">
+                AI: {scan.meta.ai.provider}
+                {scan.meta.ai.model ? ` · ${scan.meta.ai.model}` : ""}
+              </span>
+            )}
           </p>
         </div>
 

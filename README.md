@@ -64,17 +64,40 @@ nuclei) ve nuclei şablonları indirilir; bu nedenle ilk build birkaç dakika s�
 
 | Değişken | Varsayılan | Açıklama |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | boş | OpenAI anahtarı (AI triage için birincil) |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Kullanılacak OpenAI modeli |
-| `AI_PROVIDER` | `auto` | `auto` \| `openai` \| `ollama` \| `local` |
-| `OLLAMA_URL` | `http://ollama:11434` | Ollama fallback adresi |
-| `OLLAMA_MODEL` | `llama3.1` | Ollama modeli |
+| `AI_PROVIDER` | `auto` | `auto` \| `openai` \| `anthropic` \| `gemini` \| `xai` \| `openrouter` \| `deepseek` \| `mistral` \| `groq` \| `ollama` \| `custom` \| `local` |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | boş / `gpt-4o-mini` | OpenAI |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | boş / `claude-sonnet-4-5` | Claude |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | boş / `gemini-2.5-flash` | Gemini |
+| `XAI_API_KEY` / `XAI_MODEL` | boş / `grok-3` | Grok |
+| `OPENROUTER_API_KEY` | boş | OpenRouter (anahtarsız da sınırlı çalışır) |
+| `DEEPSEEK_API_KEY` / `MISTRAL_API_KEY` / `GROQ_API_KEY` | boş | Diğer sağlayıcılar |
+| `CUSTOM_API_KEY` / `CUSTOM_BASE_URL` | boş | Herhangi bir OpenAI uyumlu API |
+| `OLLAMA_URL` / `OLLAMA_MODEL` | `http://ollama:11434` / `llama3.1` | Yerel Ollama |
 | `DEMO_MODE` | `false` | Binary/hedef olmadan uçtan uca demo çalıştırır |
 | `SCANNER_TIMEOUT` | `1200` | Tarayıcıları için maksimum süre (sn) |
 
-`AI_PROVIDER=local` seçilirse ve hiçbir LLM yapılandırılmadıysa RAVEN, her bulgu
-için deterministik yerel analiz üretir; sistem **hiçbir durumda boş analiz ile
-kalmaması** için tasarlanmıştır.
+### AI Sağlayıcıları
+
+RAVEN, **istediğiniz her AI'yi** kullanmanızı sağlar: OpenAI, Anthropic Claude,
+Google Gemini, xAI Grok, OpenRouter, DeepSeek, Mistral, Groq, yerel Ollama ve
+herhangi bir OpenAI uyumlu API (`custom`).
+
+- Ana sayfadaki **AI Sağlayıcı** dropdown'undan seçim yapın; **API Anahtarı /
+  Model** butonuyla anahtarınızı ve modeli kaydedin.
+- Anahtarlar veritabanında saklanır ve API yanıtlarında **asla** döndürülmez
+  (yalnızca maskeli gösterilir: `gsk_••••abcd`).
+- Seçim kalıcıdır; her tarama bu sağlayıcıyı kullanır. Tarama bazlı geçersiz
+  kılmak için `POST /api/scans` içine `ai_provider` gönderin.
+- Sağlayıcınız yanıt vermezse veya anahtar eksikse RAVEN otomatik olarak
+  deterministik **yerel analiz** motoruna düşer; hiçbir bulgu analiz'siz
+  kalmaz. Kullanılan sağlayıcı tarama sayfasında ve `meta.ai` içinde görünür.
+
+```bash
+curl http://localhost:8000/api/providers                 # saglayici listesi
+curl -X PUT http://localhost:8000/api/settings \
+  -H 'Content-Type: application/json' \
+  -d '{"provider":"xai","api_key":"gsk_...","model":"grok-3"}'
+```
 
 ---
 
@@ -88,8 +111,10 @@ kalmaması** için tasarlanmıştır.
   varsayılandır, derin modda `low` dahildir.
 - **Secret scan:** JS dosyalarında AWS, GitHub, GitLab, Slack, Google, Stripe,
   JWT, private key ve generic secret regex imzaları.
-- **AI triage:** OpenAI (birincil) / Ollama (fallback) ile false positive eleme,
+- **AI triage:** İstediğiniz sağlayıcıyı seçin (OpenAI, Claude, Gemini, Grok,
+  OpenRouter, DeepSeek, Mistral, Groq, Ollama, özel) — false positive eleme,
   severity, CVSS, sömürü senaryosu, OWASP kategorisi ve fix kodu üretimi.
+  Sağlayıcı yok/yanıt vermezse yerel analiz devreye girer.
 - **Canlı ilerleme:** 2 saniyelik polling ile canlı log terminali, progress bar,
   risk skoru ve bulgu akışı.
 - **Sonuçlar:** 0-100 risk skoru, severity filtresi, arama, false positive gösterimi,
@@ -126,7 +151,9 @@ Next.js 15 (3000) ── /api/* proxy ──► FastAPI (8000)
 - **Tarayıcılar:** Docker imajına gömülü binary'ler, `subprocess` ile çağrılır;
   hedefe saniyede en fazla 10 istek (`-rate-limit 10`).
 - **Frontend:** Next.js 15 App Router, TypeScript, Tailwind CSS, Lucide Icons.
-- **AI:** OpenAI API (birincil) → Ollama (fallback) → yerel analiz (son çare).
+- **AI:** Kullanıcının seçtiği sağlayıcı (OpenAI, Claude, Gemini, Grok,
+  OpenRouter, DeepSeek, Mistral, Groq, Ollama, özel OpenAI-uyumlu) → yerel
+  analiz (son çare).
 
 ---
 
@@ -142,6 +169,9 @@ Next.js 15 (3000) ── /api/* proxy ──► FastAPI (8000)
 | `GET` | `/api/scans/{id}/stats` | Severity dağılımı, risk, motor bilgisi |
 | `GET` | `/api/scans/{id}/logs` | `?after_id=` canlı log akışı (polling) |
 | `POST` | `/api/scans/{id}/report` | `{format: pdf\|json}` → dosya |
+| `GET` | `/api/providers` | Desteklenen AI sağlayıcıları + yapılandırma durumu |
+| `GET` / `PUT` | `/api/settings` | AI seçimi / anahtar / model (anahtarlar maskelenir) |
+| `GET` | `/api/scans/diff?from=&to=` | İki tarama arası bulgu/risk farkı |
 | `GET` | `/ws/scans/{id}` | WebSocket canlı log stream |
 
 Örnek:

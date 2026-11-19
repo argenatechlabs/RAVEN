@@ -217,7 +217,15 @@ class ScanPipeline:
 
                 # 6) AI triage
                 self._progress(session, scan, "ai-triage")
-                provider = resolve_provider(self.settings, logger)
+                provider = resolve_provider(
+                    self.settings, logger, db=session,
+                    provider_id=(scan.meta or {}).get("ai_provider"),
+                )
+                scan.meta = {
+                    **(scan.meta or {}),
+                    "ai": {"provider": provider.name, "model": provider.model},
+                }
+                session.commit()
                 payload = [
                     {
                         "id": f.id,

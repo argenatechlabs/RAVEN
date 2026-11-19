@@ -161,6 +161,27 @@ class Subdomain(Base):
         }
 
 
+class Setting(Base):
+    """Key/value store for user-configurable AI provider settings.
+
+    Secrets are stored as-is (MVP has no encryption-at-rest by design); they are
+    never returned by the API, only masked.
+    """
+
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_secret: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self, mask: bool = False) -> Dict[str, Any]:
+        value = self.value
+        if mask and self.is_secret and value:
+            value = f"{value[:4]}••••{value[-4:]}" if len(value) > 8 else "••••"
+        return {"key": self.key, "value": value, "is_secret": self.is_secret}
+
+
 class ScanLog(Base):
     __tablename__ = "scan_logs"
 

@@ -230,6 +230,7 @@ def triage_findings(
         return results
 
     batches = [findings[i : i + max_per_request] for i in range(0, len(findings), max_per_request)]
+    applied = 0
     for batch in batches:
         payload = [
             {
@@ -282,6 +283,15 @@ def triage_findings(
                 owasp_category=item.get("owasp_category"),
                 provider=provider.name,
             )
+            applied += 1
     if logger:
-        logger.success(f"AI triage tamamlandı ({provider.name}): {len(results)} bulgu")
+        if applied == 0 and findings:
+            logger.warning(
+                f"{provider.name} yanıt vermedi; {len(results)} bulgu yerel analizle dolduruldu"
+            )
+        else:
+            logger.success(
+                f"AI triage tamamlandı ({provider.name}): "
+                f"{applied}/{len(results)} bulgu LLM ile analiz edildi"
+            )
     return results

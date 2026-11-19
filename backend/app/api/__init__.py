@@ -1,3 +1,3 @@
-from app.api import findings, reports, scans
+from app.api import ai_settings, findings, reports, scans
 
-__all__ = ["scans", "findings", "reports"]
+__all__ = ["scans", "findings", "reports", "ai_settings"]

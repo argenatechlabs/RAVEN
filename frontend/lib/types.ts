@@ -15,6 +15,8 @@ export interface Scan {
     executive_summary?: string;
     engines?: Record<string, string>;
     counts?: Record<string, number>;
+    ai?: { provider: string; model: string };
+    ai_provider?: string;
   };
   created_at: string | null;
   completed_at: string | null;
@@ -76,6 +78,33 @@ export interface ScanDiff {
   added: DiffFinding[];
   removed: DiffFinding[];
   risk_delta: number;
+}
+
+export interface ProviderInfo {
+  id: string;
+  label: string;
+  description: string;
+  base_url: string | null;
+  default_model: string;
+  key_env: string | null;
+  requires_key: boolean;
+  openai_compatible: boolean;
+  docs: string;
+  configured: boolean;
+}
+
+export interface ProviderSettings {
+  model: string | null;
+  base_url: string | null;
+  api_key: string | null;
+  api_key_set: boolean;
+  configured: boolean;
+}
+
+export interface SettingsState {
+  provider: string;
+  providers: Record<string, ProviderSettings>;
+  auto_priority: string[];
 }
 
 export interface Stats {

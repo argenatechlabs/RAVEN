@@ -11,13 +11,15 @@ import {
   History,
   Radar,
   Search,
+  Settings2,
   ShieldCheck,
   Zap,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { Scan } from "@/lib/types";
+import type { ProviderInfo, Scan } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 import { Spinner, StatusBadge } from "@/components/ui";
+import { AiProviderSelect, AiSettingsModal } from "@/components/ai-settings";
 
 export default function HomePage() {
   const router = useRouter();
@@ -27,6 +29,34 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<Scan[]>([]);
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [providerId, setProviderId] = useState("auto");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [providerError, setProviderError] = useState<string | null>(null);
+
+  const loadAi = useCallback(async () => {
+    try {
+      const [prov, st] = await Promise.all([api.getProviders(), api.getSettings()]);
+      setProviders(prov.items);
+      setProviderId(st.provider || "auto");
+      setProviderError(null);
+    } catch (err) {
+      setProviderError(err instanceof ApiError ? err.message : "AI ayarlari yuklenemedi");
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAi();
+  }, [loadAi]);
+
+  const changeProvider = useCallback(async (id: string) => {
+    setProviderId(id);
+    try {
+      await api.updateSettings({ provider: id });
+    } catch {
+      /* seçim arayüzde yansıtılsın; hata modalda gösterilir */
+    }
+  }, []);
 
   const loadRecent = useCallback(async () => {
     try {
@@ -60,6 +90,7 @@ export default function HomePage() {
         domain: domain.trim(),
         scan_type: scanType,
         authorized: true,
+        ai_provider: providerId,
       });
       router.push(`/scan/${scan.id}`);
     } catch (err) {
@@ -137,9 +168,27 @@ export default function HomePage() {
             </label>
           </div>
 
-          {error && (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-64">
+              <label className="label-neon mb-1 block">AI Sağlayıcı</label>
+              <AiProviderSelect
+                providers={providers}
+                value={providerId}
+                onChange={changeProvider}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="btn-ghost px-3 py-2 text-xs"
+            >
+              <Settings2 className="h-4 w-4" /> API Anahtarı / Model
+            </button>
+          </div>
+
+          {(error || providerError) && (
             <p className="rounded-lg border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-400">
-              {error}
+              {error || providerError}
             </p>
           )}
         </form>
@@ -205,6 +254,12 @@ export default function HomePage() {
           </div>
         )}
       </section>
+
+      <AiSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={(p) => setProviderId(p)}
+      />
     </div>
   );
 }

@@ -1,9 +1,11 @@
 import type {
   Finding,
+  ProviderInfo,
   Scan,
   ScanDiff,
   ScanListResponse,
   ScanLog,
+  SettingsState,
   Stats,
   Subdomain,
 } from "./types";
@@ -45,6 +47,7 @@ export interface CreateScanInput {
   domain: string;
   scan_type: "fast" | "deep";
   authorized: boolean;
+  ai_provider?: string;
 }
 
 export const api = {
@@ -83,6 +86,22 @@ export const api = {
     ),
 
   getStats: (id: number | string) => request<Stats>(`/scans/${id}/stats`),
+
+  getProviders: () =>
+    request<{ items: ProviderInfo[]; auto_priority: string[] }>("/providers"),
+
+  getSettings: () => request<SettingsState>("/settings"),
+
+  updateSettings: (input: {
+    provider?: string;
+    model?: string;
+    base_url?: string;
+    api_key?: string;
+  }) =>
+    request<SettingsState>("/settings", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
 
   diffScans: (fromId: number | string, toId: number | string) =>
     request<ScanDiff>(`/scans/diff?from=${fromId}&to=${toId}`),
