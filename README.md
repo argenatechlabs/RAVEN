@@ -162,6 +162,29 @@ docker compose down -v             # durdur + verileri sil (DB sıfırlama)
 Bir satıra tıklayınca **detay drawer**'ı açılır: AI analizi, sömürü senaryosu,
 kanıt (evidence), OWASP kategorisi ve **düzeltme/fix kodu**.
 
+### Önerilen test hedefleri
+
+Aşağıdakiler kasıtlı olarak zayıf, tarama için açık sitelerdir (kayıt
+gerektirmez). Lütfen **Hızlı** modda ve makul sıklıkla tarayın.
+
+| Site | Ne |
+| --- | --- |
+| `testphp.vulnweb.com` | Acunetix'in zayıf PHP sitesi (klasik test hedefi) |
+| `testasp.vulnweb.com` | Zayıf ASP.NET sitesi |
+| `testhtml5.vulnweb.com` | HTML5 zafiyetleri |
+| `demo.testfire.net` | Altoro Mutual — zayıf banka demosu |
+| `zero.webappsecurity.com` | İkinci test bankası |
+| `demo.owasp-juice.shop` | OWASP Juice Shop resmi demosu |
+
+Kendi makinende tekrar tekrar test için hedef çalıştırabilirsin:
+
+```bash
+docker run -d --name juice-shop -p 3001:3000 bkimminich/juice-shop   # Juice Shop
+docker run -d --name dvwa -p 3002:80 vulnerables/web-dvwa            # DVWA
+docker run -d --name webgoat -p 3003:8080 webgoat/webgoat            # WebGoat
+# Juice Shop'i 80 portuna baglarsan RAVEN'de hedef: host.docker.internal
+```
+
 Tarama bitince **PDF İndir** / **JSON** butonları aktif olur.
 
 ### Geçmiş ve fark
