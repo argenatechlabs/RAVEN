@@ -20,6 +20,7 @@ from app.ai.provider import (
     set_stored,
 )
 from app.config import settings
+from app.core.security import api_write_limit
 from app.database import get_db
 
 router = APIRouter()
@@ -77,7 +78,7 @@ def get_settings(db: Session = Depends(get_db)) -> Dict[str, Any]:
     }
 
 
-@router.put("/api/settings")
+@router.put("/api/settings", dependencies=[Depends(api_write_limit)])
 def update_settings(payload: SettingsUpdate, db: Session = Depends(get_db)) -> Dict[str, Any]:
     if payload.provider is not None:
         provider = payload.provider.strip().lower()

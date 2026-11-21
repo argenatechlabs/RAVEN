@@ -5,8 +5,9 @@ values are injected through docker-compose / .env.
 """
 from __future__ import annotations
 
+import json
 from functools import lru_cache
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -83,8 +84,14 @@ class Settings(BaseSettings):
     # The built-in Python engine probes these many alive hosts (kept small so a
     # broad scan never turns into an unbounded HTTP storm).
     builtin_max_hosts: int = 15
+    # Requests per host spent on parameter probing (keeps fast scans bounded).
+    builtin_param_budget: int = 40
     nuclei_severities: str = "critical,high,medium"
     nuclei_templates_dir: Optional[str] = None
+    # Optional authenticated scanning: JSON header object and/or a cookie
+    # string, e.g. SCAN_HEADERS='{"X-Auth":"abc"}' SCAN_COOKIE='session=xyz'.
+    scan_headers: str = ""
+    scan_cookie: str = ""
 
     # --- Demo / offline mode ------------------------------------------------
     # Generates a realistic synthetic target so the UI, AI triage, reporting
@@ -94,10 +101,18 @@ class Settings(BaseSettings):
     # --- Storage ------------------------------------------------------------
     data_dir: str = "./data"
 
-    # --- HTTP ---------------------------------------------------------------
+    # --- HTTP / API hardening ----------------------------------------------
     cors_origins: List[str] = ["*"]
     host: str = "0.0.0.0"
     port: int = 8000
+    # Optional bearer/X-API-Key gate. Empty = open (single-user local mode).
+    api_key: str = ""
+    # Per-client sliding-window limits (requests, seconds).
+    api_rate_limit: bool = True
+    api_rate_limit_rpm: int = 120
+    scan_rate_limit_rpm: int = 20
+    trust_proxy: bool = False
+    hsts_header: bool = False
 
     @property
     def sqlite(self) -> bool:
@@ -106,6 +121,22 @@ class Settings(BaseSettings):
     @property
     def severity_list(self) -> List[str]:
         return [s.strip() for s in self.nuclei_severities.split(",") if s.strip()]
+
+    @property
+    def header_map(self) -> Dict[str, str]:
+        """Parse ``SCAN_HEADERS`` (JSON object) into a header dict."""
+        if not self.scan_headers.strip():
+            return {}
+        try:
+            data = json.loads(self.scan_headers)
+        except (ValueError, TypeError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        headers = {str(k): str(v) for k, v in data.items() if v is not None}
+        if self.scan_cookie.strip():
+            headers["Cookie"] = self.scan_cookie.strip()
+        return headers
 
 
 @lru_cache

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.pipeline import ScanPipeline
+from app.core.security import scan_write_limit
 from app.core.worker import ScanWorker
 from app.database import get_db
 from app.logger import bus
@@ -79,7 +80,8 @@ def validate_domain(domain: str) -> str:
     return domain
 
 
-@router.post("/api/scans", response_model=ScanCreated, status_code=status.HTTP_201_CREATED)
+@router.post("/api/scans", response_model=ScanCreated, status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(scan_write_limit)])
 def create_scan(
     payload: ScanCreate,
     background_tasks: BackgroundTasks,

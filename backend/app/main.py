@@ -4,11 +4,12 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import ai_settings, findings, reports, scans, scanners
 from app.config import settings
+from app.core.security import install_security, require_api_key
 from app.core.worker import ScanWorker
 from app.database import init_db
 from app.logger import bus
@@ -49,11 +50,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(scans.router)
-app.include_router(findings.router)
-app.include_router(reports.router)
-app.include_router(ai_settings.router)
-app.include_router(scanners.router)
+install_security(app)
+
+# Everything except /api/health is behind the optional API-key gate so the
+# container healthcheck keeps working even when a key is configured.
+_authenticated = [Depends(require_api_key)]
+app.include_router(scans.router, dependencies=_authenticated)
+app.include_router(findings.router, dependencies=_authenticated)
+app.include_router(reports.router, dependencies=_authenticated)
+app.include_router(ai_settings.router, dependencies=_authenticated)
+app.include_router(scanners.router, dependencies=_authenticated)
 
 
 @app.get("/api/health", tags=["meta"])

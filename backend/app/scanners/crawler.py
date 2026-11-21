@@ -24,6 +24,21 @@ _SCRIPT_SRC_RE = re.compile(r"""<script[^>]+src\s*=\s*["']([^"']+)["']""", re.IG
 _JS_PATH_RE = re.compile(r"""["'](/[A-Za-z0-9_\-./?=&{}:$]{4,})["']""")
 
 
+_PAGE_RE = re.compile(r"([?&])(page|p|offset|start|skip|from|pg)=\d+", re.IGNORECASE)
+
+
+def _pagination_variants(url: str) -> List[str]:
+    """Extend ``?page=N`` style URLs with the next couple of pages."""
+    match = _PAGE_RE.search(url)
+    if not match:
+        return []
+    param = match.group(2)
+    variants: List[str] = []
+    for page in (2, 3):
+        variants.append(_PAGE_RE.sub(lambda m: f"{m.group(1)}{param}={page}", url, count=1))
+    return variants
+
+
 def _extract_inline_paths(text: str) -> List[str]:
     paths: List[str] = []
     for match in _JS_PATH_RE.findall(text or ""):
@@ -51,7 +66,8 @@ def _demo_endpoints(alive: List[SubdomainResult]) -> List[EndpointResult]:
 
 
 def _crawl_python(alive: List[SubdomainResult], ctx: ScanContext) -> List[EndpointResult]:
-    client = RateLimitedClient(rate_limit=ctx.settings.request_rate_limit)
+    client = RateLimitedClient(rate_limit=ctx.settings.request_rate_limit,
+                           extra_headers=ctx.settings.header_map)
     seen = set()
     results: List[EndpointResult] = []
     try:
@@ -93,6 +109,12 @@ def _crawl_python(alive: List[SubdomainResult], ctx: ScanContext) -> List[Endpoi
                 if absolute not in seen:
                     results.append(EndpointResult(url=absolute, is_js=is_js_url(absolute)))
                     queue.append((absolute, depth + 1))
+                    for variant in _pagination_variants(absolute):
+                        if variant not in seen:
+                            results.append(
+                                EndpointResult(url=variant, is_js=is_js_url(variant))
+                            )
+                            queue.append((variant, depth + 1))
     finally:
         client.close()
     return results[: ctx.settings.max_endpoints]

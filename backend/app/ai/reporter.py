@@ -16,7 +16,8 @@ Tarama tipi: {scan_type}
 Risk skoru: {risk}/100
 Toplam alt alan: {subdomain_count} (canlı: {alive_count})
 Toplam bulgu: {finding_count}
-
+Motorlar: {engines}
+{warning}
 Bulgular:
 {findings}
 
@@ -40,6 +41,36 @@ def _severity_counts(findings: List[Dict[str, Any]]) -> Dict[str, int]:
     return counts
 
 
+def _engine_line(scan: Dict[str, Any]) -> str:
+    engines = (scan.get("meta") or {}).get("engines") or {}
+    if not engines:
+        return ""
+    order = ["recon", "liveness", "tls", "crawler", "vulnerability", "secrets"]
+    labels = {
+        "recon": "Alt alan keşfi", "liveness": "Canlılık/teknoloji",
+        "tls": "TLS sertifikası", "crawler": "Tarama/endpoint",
+        "vulnerability": "Zafiyet", "secrets": "Sır tespiti",
+    }
+    parts = [
+        f"{labels.get(stage, stage)}: {engines[stage]}"
+        for stage in order
+        if engines.get(stage) and engines[stage] != "none"
+    ]
+    return "Kullanılan motorlar — " + ", ".join(parts) + "."
+
+
+def _owasp_line(findings: List[Dict[str, Any]]) -> str:
+    counts: Dict[str, int] = {}
+    for f in findings:
+        category = f.get("owasp_category")
+        if category:
+            counts[category] = counts.get(category, 0) + 1
+    if not counts:
+        return ""
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:4]
+    return "OWASP dağılımı — " + ", ".join(f"{k} ({v})" for k, v in ordered) + "."
+
+
 def _local_summary(scan: Dict[str, Any], findings: List[Dict[str, Any]],
                    subdomains: List[Dict[str, Any]]) -> str:
     counts = _severity_counts(findings)
@@ -59,9 +90,21 @@ def _local_summary(scan: Dict[str, Any], findings: List[Dict[str, Any]],
         f"orta **{counts['medium']}**, düşük **{counts['low']}** seviye bulgu mevcut. "
         f"Hedefin risk skoru **{scan.get('risk_score', 0)}/100** olarak hesaplandı.",
         "",
-        "## Düzeltme Öncelik Listesi",
-        "",
     ]
+    engine_line = _engine_line(scan)
+    if engine_line:
+        lines += [engine_line, ""]
+    owasp_line = _owasp_line(findings)
+    if owasp_line:
+        lines += [owasp_line, ""]
+    if (scan.get("meta") or {}).get("warning") == "no_findings":
+        lines += [
+            "> ⚠️ Bu tarama 0 bulgu üretti. Hedef erişilebilir olmayabilir, "
+            "tarayıcı binary'leri kurulu olmayabilir veya hedef gerçekten temiz "
+            "olabilir. Motor durumu yukarıda belirtildiği gibidir.",
+            "",
+        ]
+    lines += ["## Düzeltme Öncelik Listesi", ""]
     if critical_high:
         for i, f in enumerate(critical_high[:5], start=1):
             lines.append(
@@ -96,6 +139,11 @@ def generate_executive_summary(
             str(f.get("severity")).lower(), 9
         ),
     )
+    engines = (scan.get("meta") or {}).get("engines") or {}
+    engine_text = ", ".join(
+        f"{stage}={engine}" for stage, engine in engines.items() if engine != "none"
+    ) or "belirtilmedi"
+    warning = (scan.get("meta") or {}).get("warning")
     user = SUMMARY_USER.format(
         domain=scan.get("target_domain"),
         scan_type=scan.get("scan_type"),
@@ -103,6 +151,11 @@ def generate_executive_summary(
         subdomain_count=len(subdomains),
         alive_count=sum(1 for s in subdomains if s.get("is_alive")),
         finding_count=len(findings),
+        engines=engine_text,
+        warning=(
+            "Bu tarama 0 bulgu üretti (motorlar yukarıda); bunu özette açıkça belirt."
+            if warning == "no_findings" else ""
+        ),
         findings="\n".join(
             f"- [{f.get('severity')}] {f.get('title')} — {f.get('url')} "
             f"(CVSS {f.get('cvss')})"

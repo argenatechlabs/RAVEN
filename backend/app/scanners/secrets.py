@@ -164,7 +164,8 @@ def run(
     unique = unique[: ctx.settings.max_js_files]
 
     ctx.logger.info(f"secret taraması: {len(unique)} dosya")
-    client = RateLimitedClient(rate_limit=ctx.settings.request_rate_limit)
+    client = RateLimitedClient(rate_limit=ctx.settings.request_rate_limit,
+                           extra_headers=ctx.settings.header_map)
     findings: List[SecretResult] = []
     seen = set()
     try:

@@ -16,7 +16,7 @@ from app.config import Settings
 from app.database import SessionLocal
 from app.logger import LogBus, ScanLogger
 from app.models import Finding, Scan, ScanStatus, Severity, Subdomain
-from app.scanners import crawler, recon, secrets, tech, vuln
+from app.scanners import crawler, recon, secrets, tech, tls, vuln
 from app.scanners.context import ScanContext
 from app.scanners.types import SecretResult, SubdomainResult, VulnResult
 
@@ -219,6 +219,10 @@ class ScanPipeline:
                 logger.info(f"Liveness motoru: {tech_report.engine} — {tech_report.detail}")
                 self._save_subdomains(session, scan, subdomains, alive)
 
+                # 2b) TLS / certificate health (cheap, runs on HTTPS hosts)
+                tls_findings, tls_report = tls.run(ctx, alive)
+                logger.info(f"TLS motoru: {tls_report.engine} — {tls_report.detail}")
+
                 # 3) crawl
                 self._progress(session, scan, "crawl")
                 endpoints, crawl_report = crawler.run(ctx, alive)
@@ -226,7 +230,9 @@ class ScanPipeline:
 
                 # 4) vuln scan
                 self._progress(session, scan, "nuclei")
-                vulns, vuln_report = vuln.run(ctx, alive, endpoints)
+                vulns, vuln_report = vuln.run(
+                    ctx, alive, endpoints, extra_findings=tls_findings
+                )
                 logger.info(f"Zafiyet motoru: {vuln_report.engine} — {vuln_report.detail}")
 
                 # 5) secret scan
@@ -242,6 +248,7 @@ class ScanPipeline:
                     "engines": {
                         "recon": recon_report.engine,
                         "liveness": tech_report.engine,
+                        "tls": tls_report.engine,
                         "crawler": crawl_report.engine,
                         "vulnerability": vuln_report.engine,
                         "secrets": secret_report.engine,
@@ -305,6 +312,10 @@ class ScanPipeline:
                     f.owasp_category = result.owasp_category
                     if result.cvss is not None:
                         f.cvss = result.cvss
+                    raw = dict(f.raw or {})
+                    raw["confidence"] = result.confidence
+                    raw["ai_attempts"] = result.attempts
+                    f.raw = raw
                 session.commit()
 
                 # 7) summary + risk

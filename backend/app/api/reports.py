@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.ai.provider import resolve_provider
 from app.ai.reporter import generate_executive_summary
 from app.config import settings
+from app.core.security import api_write_limit
 from app.database import get_db
 from app.models import Scan, ScanStatus
 from app.reports.pdf import render_pdf
@@ -53,7 +54,7 @@ def _filename(scan: Scan, ext: str) -> str:
     return f"raven-report-{domain}-{scan.id}.{ext}"
 
 
-@router.post("/api/scans/{scan_id}/report")
+@router.post("/api/scans/{scan_id}/report", dependencies=[Depends(api_write_limit)])
 def create_report(
     scan_id: int,
     payload: ReportRequest = ReportRequest(),

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import os
 import re
 from typing import Any, Dict, List
 from xml.sax.saxutils import escape
@@ -49,6 +50,41 @@ def _s(text: Any) -> str:
     return str(text if text is not None else "").translate(_TR_MAP)
 
 
+_FONT_REGISTERED = False
+_TTF_OK = False
+
+
+def _register_fonts() -> bool:
+    """Best-effort TrueType registration so Turkish glyphs render natively.
+
+    Falls back to the transliteration in ``_s`` when no font is installed.
+    """
+    global _FONT_REGISTERED, _TTF_OK
+    if _FONT_REGISTERED:
+        return _TTF_OK
+    _FONT_REGISTERED = True
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    ]
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    normal = next((path for path in candidates if os.path.exists(path)), None)
+    bold = normal.replace("DejaVuSans.ttf", "DejaVuSans-Bold.ttf") if normal else None
+    if not normal or not os.path.exists(bold):
+        return False
+    try:
+        pdfmetrics.registerFont(TTFont("RavenSans", normal))
+        pdfmetrics.registerFont(TTFont("RavenSans-Bold", bold))
+    except Exception:  # pragma: no cover - platform dependent
+        return False
+    _TTF_OK = True
+    return True
+
+
 def _p(text: Any, style) -> Paragraph:
     escaped = escape(_s(text))
     # Minimal Markdown: **bold** -> <b>
@@ -62,13 +98,13 @@ def _header_footer(canvas, doc) -> None:
     canvas.setFillColor(BG_DARK)
     canvas.rect(0, 0, width, height, stroke=0, fill=1)
     canvas.setFillColor(NEON)
-    canvas.setFont("Helvetica-Bold", 8)
+    canvas.setFont("RavenSans-Bold" if _TTF_OK else "Helvetica-Bold", 8)
     canvas.drawString(18 * mm, height - 12 * mm, "RAVEN // AUTONOMOUS AI PENTESTER")
     canvas.setStrokeColor(NEON_DIM)
     canvas.setLineWidth(0.6)
     canvas.line(18 * mm, height - 14 * mm, width - 18 * mm, height - 14 * mm)
     canvas.setFillColor(GREY)
-    canvas.setFont("Helvetica", 7)
+    canvas.setFont("RavenSans" if _TTF_OK else "Helvetica", 7)
     canvas.drawString(18 * mm, 10 * mm, "Gizli - Yetkili personele ozel")
     canvas.drawRightString(width - 18 * mm, 10 * mm, f"Sayfa {doc.page}")
     canvas.restoreState()
@@ -76,25 +112,28 @@ def _header_footer(canvas, doc) -> None:
 
 def _styles() -> dict:
     base = getSampleStyleSheet()
+    _register_fonts()
+    font = "RavenSans" if _TTF_OK else "Helvetica"
+    font_bold = "RavenSans-Bold" if _TTF_OK else "Helvetica-Bold"
     styles = {
         "title": ParagraphStyle(
-            "rav-title", parent=base["Title"], fontName="Helvetica-Bold",
+            "rav-title", parent=base["Title"], fontName=font_bold,
             fontSize=26, textColor=NEON, leading=30, alignment=TA_LEFT,
         ),
         "subtitle": ParagraphStyle(
-            "rav-sub", parent=base["Normal"], fontName="Helvetica",
+            "rav-sub", parent=base["Normal"], fontName=font,
             fontSize=11, textColor=colors.white, leading=15,
         ),
         "h2": ParagraphStyle(
-            "rav-h2", parent=base["Heading2"], fontName="Helvetica-Bold",
+            "rav-h2", parent=base["Heading2"], fontName=font_bold,
             fontSize=14, textColor=NEON, leading=18, spaceBefore=10, spaceAfter=6,
         ),
         "body": ParagraphStyle(
-            "rav-body", parent=base["Normal"], fontName="Helvetica",
+            "rav-body", parent=base["Normal"], fontName=font,
             fontSize=9.5, textColor=LIGHT, leading=14,
         ),
         "cell": ParagraphStyle(
-            "rav-cell", parent=base["Normal"], fontName="Helvetica",
+            "rav-cell", parent=base["Normal"], fontName=font,
             fontSize=8.5, textColor=LIGHT, leading=11,
         ),
         "mono": ParagraphStyle(
@@ -164,8 +203,8 @@ def render_pdf(
     meta.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#111111")),
         ("TEXTCOLOR", (0, 0), (0, -1), NEON),
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+        ("FONTNAME", (0, 0), (0, -1), font_bold),
+        ("FONTNAME", (1, 0), (1, -1), font),
         ("TEXTCOLOR", (1, 0), (1, -1), LIGHT),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#262626")),
@@ -190,7 +229,7 @@ def render_pdf(
     sev_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111111")),
         ("TEXTCOLOR", (0, 0), (-1, 0), NEON),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 0), (-1, 0), font_bold),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("TEXTCOLOR", (0, 1), (0, 1), SEVERITY_COLORS["critical"]),
@@ -202,6 +241,38 @@ def render_pdf(
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
     story.append(sev_table)
+    story.append(Spacer(1, 5 * mm))
+
+    counts_meta = (scan.get("meta") or {}).get("counts") or {}
+    scope_rows = [
+        ["Alt Alan", "Canli", "Endpoint", "Zafiyet", "Sır Fitili"],
+        [
+            str(counts_meta.get("subdomains", len(subdomains))),
+            str(counts_meta.get("alive", "-")),
+            str(counts_meta.get("endpoints", "-")),
+            str(counts_meta.get("vulnerabilities", "-")),
+            str(counts_meta.get("secrets", "-")),
+        ],
+    ]
+    scope = Table(scope_rows, colWidths=[34 * mm] * 5)
+    scope.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111111")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), NEON),
+        ("FONTNAME", (0, 0), (-1, 0), font_bold),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#262626")),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(scope)
+    if (scan.get("meta") or {}).get("warning") == "no_findings":
+        story.append(Spacer(1, 3 * mm))
+        story.append(_p(
+            "<b>Dikkat:</b> bu tarama 0 bulgu üretti. Hedef erişilebilir "
+            "olmayabilir veya tarayıcı binary'leri kurulu olmayabilir.",
+            styles["body"],
+        ))
     story.append(PageBreak())
 
     # --- Executive summary ---------------------------------------------------
@@ -212,6 +283,32 @@ def render_pdf(
     # --- Findings table ------------------------------------------------------
     story.append(_p("Bulgular", styles["h2"]))
     if findings:
+        by_type: Dict[str, int] = {}
+        by_source: Dict[str, int] = {}
+        for f in findings:
+            by_type[str(f.get("type") or "vulnerability")] = \
+                by_type.get(str(f.get("type") or "vulnerability"), 0) + 1
+            by_source[str(f.get("source") or "unknown")] = \
+                by_source.get(str(f.get("source") or "unknown"), 0) + 1
+        label_map = {"vulnerability": "Zafiyet", "secret": "Sır Fitili"}
+        type_cells = [
+            f"{label_map.get(k, k)}: {v}" for k, v in sorted(by_type.items())
+        ]
+        source_cells = [f"{k}: {v}" for k, v in sorted(by_source.items())]
+        breakdown = Table(
+            [[_p("Tür", styles["cell"]), _p("Motor", styles["cell"])],
+             [_p("  ".join(type_cells) or "-", styles["cell"]),
+              _p("  ".join(source_cells) or "-", styles["cell"])]],
+            colWidths=[80 * mm, 80 * mm],
+        )
+        breakdown.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111111")),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#262626")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.append(breakdown)
+        story.append(Spacer(1, 4 * mm))
         data = [[_p("Seviye", styles["cell"]), _p("Bulgu", styles["cell"]),
                  _p("URL", styles["cell"]), _p("CVSS", styles["cell"])]]
         for f in findings:

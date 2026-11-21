@@ -142,20 +142,31 @@ def resolve_host(host: str) -> Optional[str]:
 
 
 class RateLimitedClient:
-    """Tiny httpx wrapper enforcing the per-target requests-per-second cap."""
+    """Tiny httpx wrapper enforcing the per-target requests-per-second cap.
 
-    def __init__(self, rate_limit: int = 10, timeout: float = 8.0) -> None:
+    ``extra_headers`` lets an authorised scan send a session cookie or custom
+    headers (configured through ``SCAN_HEADERS`` / ``SCAN_COOKIE``).
+    """
+
+    def __init__(
+        self,
+        rate_limit: int = 10,
+        timeout: float = 8.0,
+        extra_headers: Optional[Dict[str, str]] = None,
+    ) -> None:
         self.rate_limit = max(1, int(rate_limit))
         self.min_interval = 1.0 / self.rate_limit
         self._last = 0.0
+        headers = {
+            "User-Agent": "RAVEN-Pentest/1.0 (+https://github.com/argenatechlabs/RAVEN)",
+            "Accept": "*/*",
+        }
+        headers.update(extra_headers or {})
         self.client = httpx.Client(
             follow_redirects=True,
             timeout=timeout,
             verify=False,
-            headers={
-                "User-Agent": "RAVEN-Pentest/1.0 (+https://github.com/argenatechlabs/RAVEN)",
-                "Accept": "*/*",
-            },
+            headers=headers,
         )
 
     def get(self, url: str, follow_redirects: bool = True) -> Optional[httpx.Response]:

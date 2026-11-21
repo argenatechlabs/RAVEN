@@ -27,6 +27,7 @@ SADECE şu anahtarlara sahip JSON dizisi döndür (başka metin yazma):
     "index": 0,
     "severity": "critical|high|medium|low",
     "is_false_positive": false,
+    "confidence": 0.85,
     "reason": "neden gerçek/false positive olduğunu 2-3 cümleyle açıkla",
     "cvss": 8.5,
     "exploit_scenario": "tek cümlelik sömürü senaryosu",
@@ -39,7 +40,9 @@ Kurallar:
 - False positive'leri (generic eşleşme, etkisiz/eski ama zararsız ipucu) is_false_positive=true yap.
 - Gerçek tehlikeleri critical/high yap.
 - cvss 0.0-10.0 arasında sayı olsun.
+- confidence 0.0-1.0 arasında, tespite olan güvenin.
 - owasp_category OWASP Top 10 2021 kodunu kullan (ör. A03:2021-Injection).
+- SADECE JSON döndür; açıklama yazma.
 """
 
 
@@ -53,6 +56,8 @@ class TriageResult:
     fix_code: str
     owasp_category: Optional[str]
     provider: str
+    confidence: float = 0.5
+    attempts: int = 1
 
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
@@ -165,6 +170,7 @@ def local_analysis(finding: Dict[str, Any]) -> TriageResult:
         fix_code=fix_code,
         owasp_category=_owasp_for(title, tags) if not fp else None,
         provider="local",
+        confidence=0.6 if fp else 0.5,
     )
 
 
@@ -206,6 +212,14 @@ def _coerce_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).lower() in ("true", "1", "yes", "evet")
+
+
+def _coerce_confidence(value: Any) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return 0.5
+    return max(0.0, min(1.0, confidence))
 
 
 def _coerce_float(value: Any) -> Optional[float]:
@@ -252,16 +266,34 @@ def triage_findings(
             count=len(batch),
             findings=json.dumps(payload, ensure_ascii=False, indent=1),
         )
-        try:
-            raw = provider.complete(SYSTEM_PROMPT, user)
-        except Exception as exc:
+        parsed = None
+        attempts = 0
+        for attempt in range(2):
+            attempts = attempt + 1
+            prompt = user
+            if attempt:
+                prompt = (
+                    user + "\n\nÖnceki yanıtın geçerli JSON değildi. "
+                    "SADECE geçerli JSON dizisi döndür, başka metin yazma."
+                )
+            try:
+                raw = provider.complete(SYSTEM_PROMPT, prompt)
+            except Exception as exc:
+                if logger:
+                    logger.warning(f"AI triage isteği başarısız ({provider.name}): {exc}")
+                parsed = None
+                break
+            parsed = _extract_json_array(raw)
+            if parsed:
+                break
             if logger:
-                logger.warning(f"AI triage isteği başarısız ({provider.name}): {exc}")
-            continue
-        parsed = _extract_json_array(raw)
+                logger.warning(
+                    f"AI yanıtı parse edilemedi ({provider.name}), "
+                    f"yeniden deneme {attempts}/2"
+                )
         if not parsed:
             if logger:
-                logger.warning(f"AI yanıtı parse edilemedi ({provider.name}); yerel analze dönülüyor")
+                logger.warning(f"AI yanıtı alınamadı ({provider.name}); yerel analze dönülüyor")
             continue
         by_index = {}
         for item in parsed:
@@ -287,6 +319,8 @@ def triage_findings(
                 fix_code=str(item.get("fix_code") or "").strip(),
                 owasp_category=item.get("owasp_category"),
                 provider=provider.name,
+                confidence=_coerce_confidence(item.get("confidence")),
+                attempts=attempts,
             )
             applied += 1
     if logger:

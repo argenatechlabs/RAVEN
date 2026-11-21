@@ -9,6 +9,7 @@ import json
 import os
 import re
 from typing import List, Optional, Tuple
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.scanners.common import (
     EngineReport,
@@ -521,11 +522,167 @@ def _behaviour_checks(client, host: str, base: str, findings: List[VulnResult]) 
             break
 
 
+# --- Parameter probing -------------------------------------------------------
+# A tiny, budgeted parameter fuzzer. Only well-known parameter names are
+# touched and each probe must produce a distinctive response signal, which
+# keeps the false-positive rate low.
+_PARAM_NAMES = (
+    "id", "q", "query", "search", "s", "page", "file", "path", "url", "redirect",
+    "next", "return", "returnurl", "template", "lang", "name", "cat", "category",
+    "product", "news", "article", "view", "include", "doc", "item", "p", "offset",
+    "folder", "dir", "load", "read", "show", "download", "img", "image",
+    "document", "report", "ticket", "user", "username", "email", "host", "target",
+)
+
+_PARAM_PROBES = (
+    {
+        "kind": "xss",
+        "payload": "<script>ravenxss9()</script>",
+        "severity": "high",
+        "name": "Reflected XSS (Parameter)",
+        "description": "A request parameter reflects input without encoding.",
+        "cvss": 7.8,
+        "tags": ["xss", "reflected", "injection"],
+    },
+    {
+        "kind": "sqli",
+        "payload": "' AND '1'='1",
+        "severity": "high",
+        "name": "SQL Injection (Parameter)",
+        "description": "A SQL error / syntax signal appeared for a malformed parameter.",
+        "cvss": 8.1,
+        "tags": ["sqli", "injection"],
+    },
+    {
+        "kind": "lfi",
+        "payload": "../../../../../../etc/passwd",
+        "severity": "high",
+        "name": "Local File Inclusion (Parameter)",
+        "description": "A file-read parameter returned OS file contents.",
+        "cvss": 7.5,
+        "tags": ["lfi", "injection", "file-read"],
+    },
+    {
+        "kind": "cmdi",
+        "payload": ";id",
+        "severity": "high",
+        "name": "OS Command Injection (Parameter)",
+        "description": "A command-injection signal appeared in the response.",
+        "cvss": 8.8,
+        "tags": ["rce", "command-injection", "injection"],
+    },
+    {
+        "kind": "redirect",
+        "payload": "https://evil.example/raven",
+        "severity": "medium",
+        "name": "Open Redirect (Parameter)",
+        "description": "A redirect parameter is reflected in Location.",
+        "cvss": 6.1,
+        "tags": ["open-redirect", "validation"],
+    },
+)
+
+
+def _param_signal(kind: str, resp, payload: str) -> bool:
+    body = (resp.text or "").lower()
+    if kind == "xss":
+        return payload in (resp.text or "")
+    if kind == "sqli":
+        return bool(_SQL_ERROR_RE.search(resp.text or ""))
+    if kind == "lfi":
+        return "root:x:0:0:" in body or "[extensions]" in body
+    if kind == "cmdi":
+        return "uid=" in body
+    if kind == "redirect":
+        return "evil.example" in resp.headers.get("location", "").lower()
+    return False
+
+
+def _candidate_param_urls(endpoints: Optional[List], base: str) -> List[Tuple[str, str]]:
+    """Return ``(url, parameter_name)`` pairs worth probing."""
+    candidates: List[Tuple[str, str]] = []
+    seen: set = set()
+    for ep in (endpoints or [])[:60]:
+        url = ep.url if hasattr(ep, "url") else str(ep)
+        if "?" not in url:
+            continue
+        query = url.split("?", 1)[1]
+        for part in query.split("&"):
+            if "=" not in part:
+                continue
+            name = part.split("=", 1)[0].lower()
+            if name in _PARAM_NAMES and (url, name) not in seen:
+                seen.add((url, name))
+                candidates.append((url, name))
+    # Also probe the landing page with common parameter names.
+    for name in ("id", "q", "search", "page", "redirect", "url", "file", "path"):
+        url = f"{base}/?{name}=1"
+        if (url, name) not in seen:
+            seen.add((url, name))
+            candidates.append((url, name))
+    return candidates[:40]
+
+
+def _with_param(url: str, name: str, value: str) -> str:
+    """Replace ``name``'s value (or append it) while keeping the rest intact."""
+    parts = urlsplit(url)
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    replaced = False
+    new_pairs: List[Tuple[str, str]] = []
+    for key, existing in pairs:
+        if key == name:
+            new_pairs.append((key, value))
+            replaced = True
+        else:
+            new_pairs.append((key, existing))
+    if not replaced:
+        new_pairs.append((name, value))
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(new_pairs), parts.fragment)
+    )
+
+
+def _parameter_checks(
+    client, host: str, base: str, endpoints: Optional[List],
+    findings: List[VulnResult], budget: int,
+) -> None:
+    candidates = _candidate_param_urls(endpoints, base)
+    used = 0
+    for url, name in candidates:
+        if used >= budget:
+            return
+        for probe in _PARAM_PROBES:
+            if used >= budget:
+                return
+            target = _with_param(url, name, probe["payload"])
+            resp = client.get(target, follow_redirects=(probe["kind"] != "redirect"))
+            used += 1
+            if resp is None:
+                continue
+            if not _param_signal(probe["kind"], resp, probe["payload"]):
+                continue
+            template = f"param-{probe['kind']}-{name}"
+            if any(f.template_id == template and f.url == target for f in findings):
+                continue
+            _add(
+                findings, host, target, probe["severity"], probe["name"],
+                probe["description"], probe["cvss"], probe["tags"],
+                f"param={name}; status={resp.status_code}; "
+                f"signal={probe['payload'][:40]}",
+                template,
+            )
+            # One finding per parameter is enough.
+            break
+
+
 def _builtin_scan(
     alive: List[SubdomainResult], ctx: ScanContext,
     endpoints: Optional[List] = None,
 ) -> List[VulnResult]:
-    client = RateLimitedClient(rate_limit=ctx.settings.request_rate_limit)
+    client = RateLimitedClient(
+        rate_limit=ctx.settings.request_rate_limit,
+        extra_headers=ctx.settings.header_map,
+    )
     findings: List[VulnResult] = []
     max_hosts = ctx.settings.builtin_max_hosts
     max_findings = 500
@@ -561,6 +718,10 @@ def _builtin_scan(
 
             _check_landing(landing, host.subdomain, base, findings)
             _behaviour_checks(client, host.subdomain, base, findings)
+            _parameter_checks(
+                client, host.subdomain, base, endpoints, findings,
+                ctx.settings.builtin_param_budget,
+            )
 
         # Outdated JS libraries / tech across discovered endpoints.
         for ep in (endpoints or [])[:40]:
@@ -591,15 +752,38 @@ def _builtin_scan(
     return unique[:max_findings]
 
 
+def _ensure_nuclei_templates(ctx: ScanContext, binary: str) -> Optional[str]:
+    """Return the template directory to use, updating it when missing."""
+    configured = ctx.settings.nuclei_templates_dir
+    if configured and os.path.isdir(configured) and os.listdir(configured):
+        return configured
+    default_dir = os.path.join(os.path.expanduser("~"), ".config", "nuclei", "templates")
+    if os.path.isdir(default_dir) and os.listdir(default_dir):
+        ctx.logger.info(f"nuclei şablonları: {default_dir}")
+        return default_dir
+    if not ctx.deep:
+        return configured
+    ctx.logger.info("nuclei şablonları indiriliyor (deep mod)")
+    result = run_cmd(
+        [binary, "-update-templates", "-silent"], timeout=600, cwd=ctx.workdir
+    )
+    if result.ok and os.path.isdir(default_dir):
+        return default_dir
+    ctx.logger.warning(f"nuclei şablonları güncellenemedi: {result.stderr.strip()[:200]}")
+    return configured
+
+
 def run(
     ctx: ScanContext, alive: List[SubdomainResult],
     endpoints: Optional[List] = None,
+    extra_findings: Optional[List[VulnResult]] = None,
 ) -> Tuple[List[VulnResult], EngineReport]:
+    extra = list(extra_findings or [])
     if not alive:
-        return [], EngineReport(engine="none", detail="canlı host yok")
+        return extra, EngineReport(engine="none", detail="canlı host yok")
 
     if ctx.settings.demo_mode:
-        findings = _demo_findings(alive)
+        findings = _demo_findings(alive) + extra
         ctx.logger.info(f"[DEMO] nuclei: {len(findings)} bulgu")
         return findings, EngineReport(engine="demo", detail="sentetik veri")
 
@@ -607,6 +791,7 @@ def run(
     out_file = os.path.join(ctx.workdir, "nuclei.jsonl")
     write_lines(hosts_file, [h.subdomain for h in alive])
     binary = resolve_binary("nuclei", ctx.settings)
+    template_dir = _ensure_nuclei_templates(ctx, binary) if binary else None
 
     if binary:
         severities = list(ctx.settings.severity_list)
@@ -620,8 +805,8 @@ def run(
             "-timeout", "8", "-retries", "1",
             "-duc", "-nc", "-silent",
         ]
-        if ctx.settings.nuclei_templates_dir:
-            cmd += ["-t", ctx.settings.nuclei_templates_dir]
+        if template_dir:
+            cmd += ["-t", template_dir]
         ctx.logger.info(f"nuclei taraması: {len(alive)} host, "
                         f"seviyeler={','.join(severities)}")
         result = run_cmd(cmd, timeout=ctx.settings.scanner_timeout, cwd=ctx.workdir)
@@ -629,7 +814,7 @@ def run(
             ctx.logger.warning("nuclei bulunamadı, yerel taramaya geçiliyor")
         elif not result.ok:
             ctx.logger.warning(f"nuclei hatası: {result.stderr.strip()[:300]}")
-        findings = _parse_nuclei_jsonl(out_file, ctx.logger)
+        findings = _parse_nuclei_jsonl(out_file, ctx.logger) + extra
         if findings:
             # Merge with the built-in engine instead of replacing it: nuclei and
             # the Python checks cover different classes of issues.
@@ -647,6 +832,6 @@ def run(
             )
         ctx.logger.warning("nuclei bulgu döndürmedi, yerel taramaya geçiliyor")
 
-    findings = _builtin_scan(alive, ctx, endpoints)
+    findings = _builtin_scan(alive, ctx, endpoints) + extra
     ctx.logger.success(f"Yerel tarama: {len(findings)} bulgu")
     return findings, EngineReport(engine="builtin", detail=f"{len(findings)} bulgu")

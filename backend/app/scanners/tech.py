@@ -85,7 +85,8 @@ def _parse_httpx_jsonl(path: str, logger) -> List[SubdomainResult]:
 
 
 def _probe_python(subdomains: List[str], ctx: ScanContext) -> List[SubdomainResult]:
-    client = RateLimitedClient(rate_limit=ctx.settings.request_rate_limit)
+    client = RateLimitedClient(rate_limit=ctx.settings.request_rate_limit,
+                           extra_headers=ctx.settings.header_map)
     results: List[SubdomainResult] = []
     try:
         for sub in subdomains:
