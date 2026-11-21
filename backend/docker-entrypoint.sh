@@ -8,7 +8,6 @@
 # The database wait + migration steps are best-effort: if they fail the app
 # still starts and ``create_all`` guarantees the schema exists, so a broken
 # migration never takes the whole stack down.
-set -u
 
 if [ "${SKIP_MIGRATIONS:-false}" != "true" ]; then
     # Wait for the database to accept connections (compose already gates on the

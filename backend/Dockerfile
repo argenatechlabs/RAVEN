@@ -67,7 +67,11 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 
-RUN chmod +x /app/docker-entrypoint.sh \
+# A Windows/MINGW64 checkout converts the script to CRLF and dash then dies on
+# `set -u\r` ("Illegal option -"), so normalize it inside the image too.
+RUN tr -d '\r' < /app/docker-entrypoint.sh > /app/docker-entrypoint.sh.lf \
+    && mv /app/docker-entrypoint.sh.lf /app/docker-entrypoint.sh \
+    && chmod +x /app/docker-entrypoint.sh \
     && mkdir -p /app/data/scans
 
 EXPOSE 8000

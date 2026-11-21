@@ -1,0 +1,19 @@
+# Satır sonları: shell script'ler ve Dockerfile'lar Windows (MINGW64) checkout'larında
+# CRLF'e dönüşür; dash `set -u\r` gibi satırlarda "Illegal option" verir ve imaj
+# ilk açılışta ölür. Metin dosyaları her ortamda LF kalsın.
+* text=auto eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+Makefile text eol=lf
+
+# İkili varliklar hiçbir zaman dönüştürülmesin.
+*.gif binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.pdf binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
