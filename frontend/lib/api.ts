@@ -106,6 +106,16 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
+  testProvider: (providerId: string) =>
+    request<{
+      ok: boolean;
+      provider: string;
+      model: string;
+      base_url?: string;
+      latency_ms: number;
+      reply: string;
+    }>(`/providers/${providerId}/test`, { method: "POST" }),
+
   diffScans: (fromId: number | string, toId: number | string) =>
     request<ScanDiff>(`/scans/diff?from=${fromId}&to=${toId}`),
 

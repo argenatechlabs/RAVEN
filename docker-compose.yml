@@ -64,6 +64,7 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
       DEMO_MODE: ${DEMO_MODE:-false}
       SCANNER_TIMEOUT: ${SCANNER_TIMEOUT:-1200}
+      SKIP_MIGRATIONS: ${SKIP_MIGRATIONS:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-["*"]}
       API_KEY: ${API_KEY:-}
       API_RATE_LIMIT: ${API_RATE_LIMIT:-true}

@@ -152,6 +152,24 @@ def test_settings_update_masks_secret(client):
     assert "•" in stored
 
 
+def test_provider_test_local(client):
+    body = client.post("/api/providers/local/test").json()
+    assert body["ok"] is True
+    assert body["provider"] == "local"
+
+
+def test_provider_test_requires_key(client):
+    # Clear any key another test may have stored for xAI.
+    client.put("/api/settings", json={"provider": "xai", "api_key": ""})
+    response = client.post("/api/providers/xai/test")
+    assert response.status_code == 400
+    assert "anahtari" in response.json()["detail"].lower()
+
+
+def test_provider_test_unknown(client):
+    assert client.post("/api/providers/nope/test").status_code == 404
+
+
 def test_diff_endpoint(client, demo_scan):
     body = client.get(f"/api/scans/diff?from={demo_scan.id}&to={demo_scan.id}").json()
     assert body["risk_delta"] == 0

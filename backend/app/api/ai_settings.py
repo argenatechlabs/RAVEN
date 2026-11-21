@@ -5,6 +5,7 @@ by the API — only a masked representation.
 """
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.ai.provider import (
     AUTO_PRIORITY,
     PROVIDERS,
+    build_provider,
     get_stored,
     mask_secret,
     provider_config,
@@ -101,3 +103,66 @@ def update_settings(payload: SettingsUpdate, db: Session = Depends(get_db)) -> D
             )
     db.commit()
     return get_settings(db)
+
+
+@router.post("/api/providers/{provider_id}/test", dependencies=[Depends(api_write_limit)])
+def test_provider(provider_id: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Send a one-line prompt to a provider to verify the stored API key.
+
+    Uses the configuration already saved for ``provider_id`` (database first,
+    then environment); it never accepts a key from the request body so a secret
+    cannot be passed through this endpoint.
+    """
+    pid = provider_id.strip().lower()
+    if pid == "local":
+        return {
+            "ok": True,
+            "provider": pid,
+            "model": "local",
+            "latency_ms": 0,
+            "reply": "Yerel analiz motoru her zaman kullanilabilir (API anahtari gerekmez).",
+        }
+
+    spec = PROVIDERS.get(pid)
+    if spec is None:
+        raise HTTPException(status_code=404, detail="Bilinmeyen AI saglayicisi")
+
+    cfg = provider_config(db, settings, pid)
+    if spec.requires_key and not cfg.get("api_key"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{spec.label} icin API anahtari gerekli; once anahtari kaydedin.",
+        )
+
+    provider = build_provider(pid, db, settings)
+    if provider is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{spec.label} yapilandirilamadi (anahtar/model/URL eksik).",
+        )
+
+    started = time.perf_counter()
+    try:
+        reply = provider.complete(
+            "Sen RAVEN guvenlik araci icin bir test asistanisin.",
+            "Yanit olarak yalnizca su metni yaz: RAVEN-OK",
+            timeout=30,
+        )
+    except Exception as exc:  # noqa: BLE001 - surface any provider/HTTP failure
+        raise HTTPException(
+            status_code=502, detail=f"{spec.label} baglanti hatasi: {exc}"
+        ) from exc
+
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    reply = (reply or "").strip()
+    if not reply:
+        raise HTTPException(status_code=502, detail=f"{spec.label} bos yanit dondurdu.")
+
+    return {
+        "ok": True,
+        "provider": pid,
+        "model": provider.model,
+        "base_url": cfg.get("base_url"),
+        "latency_ms": latency_ms,
+        "reply": reply[:200],
+    }

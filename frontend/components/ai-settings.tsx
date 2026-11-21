@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, KeyRound, Loader2, Settings2, X } from "lucide-react";
+import { Check, KeyRound, Loader2, Settings2, X, Zap } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ProviderInfo, SettingsState } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -52,6 +52,8 @@ export function AiSettingsModal({
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -74,6 +76,7 @@ export function AiSettingsModal({
   useEffect(() => {
     if (open) {
       setSaved(false);
+      setTestResult(null);
       load();
     }
   }, [open, load]);
@@ -96,6 +99,34 @@ export function AiSettingsModal({
     setBaseUrl(cfg?.base_url ?? "");
     setApiKey("");
     setSaved(false);
+    setTestResult(null);
+  };
+
+  const testConnection = async () => {
+    setTesting(true);
+    setError(null);
+    setTestResult(null);
+    try {
+      // Persist first: the endpoint tests the *stored* configuration.
+      const updated = await api.updateSettings({
+        provider,
+        model: model.trim() || undefined,
+        base_url: baseUrl.trim() || undefined,
+        api_key: apiKey.trim() || undefined,
+      });
+      setSettings(updated);
+      const result = await api.testProvider(provider);
+      setTestResult({
+        ok: true,
+        message: `${result.model} · ${result.latency_ms} ms · ${result.reply}`,
+      });
+      onSaved?.(provider);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Baglanti testi basarisiz";
+      setTestResult({ ok: false, message });
+    } finally {
+      setTesting(false);
+    }
   };
 
   const save = async () => {
@@ -200,11 +231,39 @@ export function AiSettingsModal({
             </p>
           )}
 
+          {testResult && (
+            <p
+              className={
+                testResult.ok
+                  ? "rounded-lg border border-neon-dim/40 bg-neon/5 px-3 py-2 text-sm text-neon"
+                  : "rounded-lg border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-400"
+              }
+            >
+              {testResult.ok ? "✓ " : "✕ "}
+              {testResult.message}
+            </p>
+          )}
+
           <div className="flex items-center justify-end gap-2 pt-1">
             {saved && (
               <span className="flex items-center gap-1 text-xs text-neon">
                 <Check className="h-4 w-4" /> Kaydedildi
               </span>
+            )}
+            {provider !== "auto" && (
+              <button
+                onClick={testConnection}
+                disabled={testing || saving}
+                className="btn-ghost px-4 py-2 text-sm"
+                title="Kayitli API anahtarini kullanarak deneme istegi gonderir"
+              >
+                {testing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Zap className="h-4 w-4 text-neon-dim" />
+                )}
+                Test Et
+              </button>
             )}
             <button onClick={onClose} className="btn-ghost px-4 py-2 text-sm">
               Vazgeç

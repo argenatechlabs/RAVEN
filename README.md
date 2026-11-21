@@ -1,6 +1,9 @@
 <p align="center">
   <img src="docs/demo.gif" alt="RAVEN demo" width="720" />
 </p>
+<p align="center">
+  <sub>Bu demo, gerçek bir taramanın log akışından <code>docs/make_demo_gif.py</code> ile üretilmiştir.</sub>
+</p>
 
 # RAVEN — Autonomous AI Pentester
 
@@ -226,6 +229,9 @@ RAVEN, **istediğiniz her AI'yi** kullanmanızı sağlar:
      gösterilir; değiştirmek için yenisini yazın).
    - **Özel** seçiliyse **Base URL** alanı belirir.
 4. **Kaydet** → artık tüm taramalar bu sağlayıcıyı kullanır.
+5. **Test Et** → kayıtlı anahtarla tek satırlık deneme isteği gönderir ve
+   modeli/gecikmeyi/yankıyı gösterir (ör. `grok-3 · 840 ms · RAVEN-OK`).
+   Tarama başlatmadan anahtarın çalıştığını doğrular.
 
 Örnek — Grok kullanmak:
 
@@ -254,6 +260,9 @@ curl http://localhost:8000/api/settings         # aktif seçim + maskeli anahtar
 curl -X PUT http://localhost:8000/api/settings \
   -H 'Content-Type: application/json' \
   -d '{"provider":"xai","api_key":"gsk_...","model":"grok-3"}'
+
+# Anahtari dogrula (kayitli konfigurasyonla deneme istegi)
+curl -X POST http://localhost:8000/api/providers/xai/test
 ```
 
 ### Davranış kuralları
@@ -352,6 +361,7 @@ cd backend && DATABASE_URL=postgresql+psycopg2://raven:raven@localhost:5432/rave
 | `GET` | `/api/scanners/status` | subfinder/httpx/katana/nuclei kurulum durumu + sürümler |
 | `GET` | `/api/providers` | Desteklenen AI sağlayıcıları + yapılandırma durumu |
 | `GET` / `PUT` | `/api/settings` | AI seçimi / anahtar / model (anahtarlar maskelenir) |
+| `POST` | `/api/providers/{id}/test` | Kayıtlı anahtarla bağlantı/deneme istegi |
 | `GET` | `/ws/scans/{id}` | WebSocket canlı log stream |
 | `GET` | `/api/health` | Sağlık kontrolü |
 
@@ -566,6 +576,12 @@ derlemesini çalıştırır. Gerekli bağımlılıklar `backend/requirements-dev
 - **settings:** `key, value, is_secret, updated_at` (AI sağlayıcı yapılandırması)
 
 Migration: `docker compose exec backend alembic upgrade head`
+
+Backend container'ı `docker-entrypoint.sh` ile başlar: önce PostgreSQL'in hazır
+olmasını bekler, ardından `alembic upgrade head` çalıştırır ve en son uvicorn'ı
+başlatır. Migration başarısız olursa (ör. eski bir veritabanı zaten
+`create_all` ile kurulmuşsa) log'a uyarı düşer ve uygulama `create_all` yedeğiyle
+ayakta kalır. Migration'ı tamamen atlamak için `SKIP_MIGRATIONS=true` verin.
 
 ---
 
