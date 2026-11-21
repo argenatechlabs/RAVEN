@@ -414,9 +414,12 @@ def _check_landing(resp, host: str, base: str, findings: List[VulnResult]) -> No
         return
     headers = {k.lower(): v for k, v in resp.headers.items()}
     body = resp.text or ""
+    shown = {f.template_id for f in findings}
 
-    # Directory listing.
-    if re.search(r"<title>\s*Index of /", body, re.IGNORECASE):
+    # Directory listing (skip when the landing page itself is a sensitive path).
+    if re.search(r"<title>\s*Index of /", body, re.IGNORECASE) and base.rstrip("/").split("/")[-1] not in (
+        "backup", "old", "test", "dev", "admin", "api", "logs", "files"
+    ):
         _add(findings, host, base + "/", "medium", "Directory Listing Enabled",
              "The web server exposes a directory index.", 5.3,
              ["misconfiguration", "info-disclosure"], body[:300],
@@ -424,7 +427,7 @@ def _check_landing(resp, host: str, base: str, findings: List[VulnResult]) -> No
 
     # Missing security headers.
     missing = [label for header, label in _SECURITY_HEADERS if header not in headers]
-    if missing:
+    if missing and "missing-security-headers" not in shown:
         _add(findings, host, base + "/", "low", "Missing Security Headers",
              "Security headers absent: " + ", ".join(missing), 3.7,
              ["headers", "misconfiguration"],
@@ -524,7 +527,7 @@ def _builtin_scan(
 ) -> List[VulnResult]:
     client = RateLimitedClient(rate_limit=ctx.settings.request_rate_limit)
     findings: List[VulnResult] = []
-    max_hosts = 15
+    max_hosts = ctx.settings.builtin_max_hosts
     max_findings = 500
     try:
         for host in alive[:max_hosts]:
@@ -628,9 +631,19 @@ def run(
             ctx.logger.warning(f"nuclei hatası: {result.stderr.strip()[:300]}")
         findings = _parse_nuclei_jsonl(out_file, ctx.logger)
         if findings:
-            ctx.logger.success(f"nuclei: {len(findings)} bulgu")
+            # Merge with the built-in engine instead of replacing it: nuclei and
+            # the Python checks cover different classes of issues.
+            builtin = _builtin_scan(alive, ctx, endpoints)
+            known = {(f.template_id, f.url) for f in findings}
+            for item in builtin:
+                if (item.template_id, item.url) not in known:
+                    findings.append(item)
+            ctx.logger.success(
+                f"nuclei: {len(findings)} bulgu (nuclei + yerleşik kontroller)"
+            )
             return findings, EngineReport(
-                engine="nuclei", command=" ".join(cmd), detail=f"{len(findings)} bulgu"
+                engine="nuclei", command=" ".join(cmd),
+                detail=f"{len(findings)} bulgu (nuclei + builtin)"
             )
         ctx.logger.warning("nuclei bulgu döndürmedi, yerel taramaya geçiliyor")
 

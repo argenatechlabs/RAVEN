@@ -33,15 +33,51 @@ STAGE_PROGRESS = {
 SECRET_SEVERITY = {
     "Private Key Block": "critical",
     "AWS Secret Access Key": "critical",
+    "AWS Session Token": "critical",
+    "Azure Storage Key": "critical",
     "AWS Access Key ID": "high",
     "Google API Key": "high",
+    "Google OAuth Client ID": "medium",
+    "Google Service Account": "high",
     "Stripe Key": "high",
     "GitHub Token": "high",
+    "GitHub OAuth Token": "high",
+    "GitHub App Token": "high",
+    "GitHub Fine-Grained Token": "high",
     "GitLab Token": "high",
     "Slack Token": "high",
+    "Slack Webhook": "high",
+    "SendGrid Key": "high",
+    "Mailgun Key": "high",
+    "Twilio SID": "medium",
+    "Twilio API Key": "high",
+    "Shopify Token": "high",
+    "Square Token": "high",
+    "PayPal Braintree": "high",
+    "Firebase Server Key": "high",
+    "Heroku API Key": "high",
+    "NPM Token": "high",
+    "PyPI Token": "high",
+    "Docker Hub Token": "medium",
+    "Discord Bot Token": "high",
+    "Discord Webhook": "high",
+    "Telegram Bot Token": "high",
+    "Bearer Token": "medium",
+    "Basic Auth Credentials": "medium",
+    "Connection String": "high",
+    "SMTP Credentials": "medium",
+    "SSH Public Key": "low",
     "JWT": "medium",
     "Generic Secret Assignment": "medium",
+    "Generic High Entropy String": "low",
     "Basic Auth in URL": "medium",
+    "Firebase URL": "info",
+    "Internal IPv4 Address": "low",
+    "Internal Hostname": "info",
+    "Email Address": "info",
+    "AWS S3 URL": "info",
+    "Facebook Token": "high",
+    "Mailchimp Key": "medium",
 }
 
 
@@ -98,7 +134,12 @@ class ScanPipeline:
                        vulns: List[VulnResult], secrets: List[SecretResult],
                        engine: str = "nuclei") -> List[Finding]:
         rows: List[Finding] = []
+        seen: set = set()
         for v in vulns:
+            key = (v.template_id, v.url)
+            if key in seen:
+                continue
+            seen.add(key)
             rows.append(
                 Finding(
                     scan_id=scan.id,

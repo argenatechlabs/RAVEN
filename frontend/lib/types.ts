@@ -17,6 +17,7 @@ export interface Scan {
     counts?: Record<string, number>;
     ai?: { provider: string; model: string };
     ai_provider?: string;
+    warning?: string;
   };
   created_at: string | null;
   completed_at: string | null;

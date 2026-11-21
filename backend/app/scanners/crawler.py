@@ -57,17 +57,29 @@ def _crawl_python(alive: List[SubdomainResult], ctx: ScanContext) -> List[Endpoi
     try:
         queue = [(f"{scheme}://{h.subdomain}", 0)
                  for h in alive for scheme in ("https", "http")]
+        max_depth = 3 if ctx.deep else 2
         while queue and len(seen) < ctx.settings.max_endpoints:
             url, depth = queue.pop(0)
             if url in seen:
                 continue
             seen.add(url)
             resp = client.get(url)
-            if resp is None or depth >= 2:
+            if resp is None or resp.status_code >= 400:
+                continue
+            if depth >= max_depth:
                 continue
             base = url.split("://", 1)[-1].split("/", 1)[0]
             inline = _extract_inline_paths(resp.text)
-            for match in _LINK_RE.findall(resp.text) + _SCRIPT_SRC_RE.findall(resp.text) + inline:
+            links = _LINK_RE.findall(resp.text) + _SCRIPT_SRC_RE.findall(resp.text) + inline
+            # robots.txt / sitemap.xml are goldmines for a crawler.
+            if url.rstrip("/").endswith(("/robots.txt", "/sitemap.xml")):
+                links += [
+                    line.split(":", 1)[1].strip()
+                    for line in (resp.text or "").splitlines()
+                    if line.lower().startswith(("disallow:", "allow:", "sitemap:", "location:"))
+                    and ":" in line
+                ]
+            for match in links:
                 link, _ = urldefrag(match.strip())
                 if not link or link.startswith(("mailto:", "tel:", "javascript:", "#")):
                     continue
@@ -123,6 +135,15 @@ def run(
         ctx.logger.warning("katana sonuç döndürmedi, yerel crawler'a geçiliyor")
 
     endpoints = _crawl_python(alive, ctx)
+    # de-duplicate identical URLs (a page may link the same asset repeatedly)
+    unique: List[EndpointResult] = []
+    seen_urls = set()
+    for ep in endpoints:
+        if ep.url in seen_urls:
+            continue
+        seen_urls.add(ep.url)
+        unique.append(ep)
+    endpoints = unique
     js = sum(1 for e in endpoints if e.is_js)
     ctx.logger.success(f"Yerel crawler: {len(endpoints)} endpoint, {js} JS dosyası")
     return endpoints, EngineReport(engine="builtin-crawler", detail=f"{len(endpoints)} endpoint")

@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     max_subdomains: int = 500
     max_endpoints: int = 5000
     max_js_files: int = 200
+    # The built-in Python engine probes these many alive hosts (kept small so a
+    # broad scan never turns into an unbounded HTTP storm).
+    builtin_max_hosts: int = 15
+    # Per-host budget for the built-in sensitive-path probes.
+    builtin_max_paths: int = 90
     nuclei_severities: str = "critical,high,medium"
     nuclei_templates_dir: Optional[str] = None
 

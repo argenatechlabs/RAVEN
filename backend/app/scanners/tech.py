@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import List, Tuple
 
 from app.scanners.common import (
@@ -101,10 +102,42 @@ def _probe_python(subdomains: List[str], ctx: ScanContext) -> List[SubdomainResu
                 if powered:
                     techs.append(powered.split("/")[0])
                 ctype = resp.headers.get("content-type", "")
-                if "wordpress" in resp.text.lower()[:4000]:
+                body = resp.text
+                lower = body.lower()[:6000]
+                if "wordpress" in lower or "wp-content" in lower or "wp-includes" in lower:
                     techs.append("WordPress")
-                if "wp-content" in resp.text[:4000]:
+                if "/wp-json" in lower:
+                    techs.append("WordPress REST API")
+                if "generator\" content=\"wordpress" in lower:
                     techs.append("WordPress")
+                if "drupal" in lower or "drupal-settings-json" in lower:
+                    techs.append("Drupal")
+                if "joomla" in lower or "joomla!" in lower:
+                    techs.append("Joomla")
+                if "react" in lower and ("root" in lower or "data-react" in lower):
+                    techs.append("React")
+                if "__next" in lower or "next/static" in lower:
+                    techs.append("Next.js")
+                if "data-v-" in lower or "vue" in lower[:2000]:
+                    techs.append("Vue")
+                if "ng-version" in lower or "ng-app" in lower:
+                    techs.append("Angular")
+                if "shopify" in lower:
+                    techs.append("Shopify")
+                if "magento" in lower or "mage-" in lower:
+                    techs.append("Magento")
+                if "jquery" in lower:
+                    techs.append("jQuery")
+                if "bootstrap" in lower:
+                    techs.append("Bootstrap")
+                if "tailwind" in lower:
+                    techs.append("Tailwind CSS")
+                if "php" in lower[:2000] and "php" in (ctype or "").lower():
+                    techs.append("PHP")
+                title_match = re.search(
+                    r"<title[^>]*>([^<]{0,200})</title>", body, re.IGNORECASE | re.DOTALL
+                )
+                title = title_match.group(1).strip() if title_match else None
                 results.append(
                     SubdomainResult(
                         subdomain=sub,
@@ -113,7 +146,7 @@ def _probe_python(subdomains: List[str], ctx: ScanContext) -> List[SubdomainResu
                         technologies=sorted(set(techs)),
                         ports=[443 if scheme == "https" else 80],
                         status_code=resp.status_code,
-                        title=None,
+                        title=title,
                     )
                 )
                 break

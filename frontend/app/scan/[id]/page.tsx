@@ -225,6 +225,12 @@ export default function ScanPage() {
               {stats.false_positives} false positive · toplam {totalFindings} bulgu
             </p>
           )}
+          {scan?.meta?.warning === "no_findings" && (
+            <p className="mt-2 rounded border border-yellow-900 bg-yellow-950/30 px-2 py-1.5 text-[11px] text-yellow-300">
+              Bu tarama 0 bulgu üretti. Hedef erişilebilir mi? Tarayıcı binary&#39;leri
+              kurulu mu (bakınız: Tarayıcılar satırı / /api/scanners/status)?
+            </p>
+          )}
           {stats?.engines && Object.keys(stats.engines).length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {Object.entries(stats.engines).map(([stage, engine]) => (

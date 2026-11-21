@@ -132,7 +132,7 @@ def local_analysis(finding: Dict[str, Any]) -> TriageResult:
         severity = "info"
     title = str(finding.get("title") or "")
     tags = list(finding.get("tags") or [])
-    fp = severity == "info"
+    fp = False
     cvss = finding.get("cvss")
     try:
         cvss = float(cvss) if cvss is not None else None
@@ -147,18 +147,23 @@ def local_analysis(finding: Dict[str, Any]) -> TriageResult:
            "Hedef sistemde doğrulandı; sömürü için kullanılabilir bir yüzey tespit edildi. ")
         + "Otomatik yerel analiz ile üretildi."
     )
-    exploit = (
-        "Saldırgan, bulguya konu bileşeni/endpoint'i doğrudan istismar ederek "
-        "yetkisiz erişim veya veri sızdırma sağlayabilir."
-    )
+    if fp:
+        exploit = "—"
+        fix_code = _fix_code(title, tags)
+    else:
+        exploit = (
+            "Saldırgan, bulguya konu bileşeni/endpoint'i doğrudan istismar ederek "
+            "yetkisiz erişim veya veri sızdırma sağlayabilir."
+        )
+        fix_code = _fix_code(title, tags)
     return TriageResult(
         severity=severity,
         is_false_positive=fp,
         reason=reason,
         cvss=cvss,
         exploit_scenario=exploit,
-        fix_code=_fix_code(title, tags),
-        owasp_category=_owasp_for(title, tags),
+        fix_code=fix_code,
+        owasp_category=_owasp_for(title, tags) if not fp else None,
         provider="local",
     )
 

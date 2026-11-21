@@ -28,6 +28,75 @@ def _demo_subdomains(domain: str) -> List[str]:
     return sorted({domain, *(f"{name}.{domain}" for name in names)})
 
 
+# --- Extra wordlist for the pure-Python DNS brute force ----------------------
+# The built-in list is intentionally broad; subfinder remains the primary engine.
+EXTRA_SUBDOMAINS = [
+    "www2", "www3", "ns3", "ns4", "dns", "dns1", "dns2", "mx", "mx1", "mx2",
+    "pop", "imap", "owa", "autodiscover", "sip", "lyncdiscover", "meet",
+    "zoom", "vdi", "rdp", "citrix", "terminal", "thinclient", "office",
+    "exchange", "ews", "mapi", "hybrid", "o365", "login-microsoftonline",
+    "azure", "aws", "gcp", "s3", "s3-eu-west-1", "ec2", "eks", "lambda",
+    "elasticbeanstalk", "cloudfront", "cdn1", "cdn2", "img", "images",
+    "media", "video", "download", "dl", "files", "share", "fileshare",
+    "sync", "backup", "storage", "minio", "s3-internal", "sftp", "scp",
+    "npm", "pypi", "maven", "artifactory", "nexus", "harbor", "registry",
+    "docker", "k8s", "kube", "openshift", "rancher", "vault", "consul",
+    "nomad", "terraform", "argocd", "spinnaker", "cd", "ci", "ci-cd",
+    "build", "buildkite", "travis", "circleci", "bamboo", "teamcity",
+    "sonar", "sonarqube", "nagios", "zabbix", "prometheus", "alertmanager",
+    "loki", "jaeger", "zipkin", "consul-ui", "traefik", "nginx", "haproxy",
+    "pm2", "netdata", "cockpit", "minio-console", "pgadmin", "phpmyadmin",
+    "dba", "mysql-admin", "sql", "sqlserver", "oracle", "mongo", "mongodb",
+    "redisinsight", "rabbitmq", "kafka", "kafka-ui", "elastic", "opensearch",
+    "logstash", "kibana", "opensearch-dashboards", "sentry", "bugsnag",
+    "datadog", "newrelic", "pagerduty", "opsgenie", "status", "statuspage",
+    "helpdesk", "servicedesk", "ticket", "tickets", "support", "kb", "wiki",
+    "confluence", "notion", "sharepoint", "teams", "slack", "chat", "im",
+    "mattermost", "rocket", "discourse", "forum", "community", "community2",
+    "forum2", "discuss", "feedback", "survey", "form", "forms", "signup",
+    "register", "account", "accounts", "my", "myaccount", "profile",
+    "customer", "customers", "client", "clients", "clientes", "portal2",
+    "partner", "partners", "affiliate", "affiliates", "reseller", "resellers",
+    "vendor", "vendors", "supplier", "suppliers", "buyer", "buyers", "pay",
+    "payment", "payments", "billing", "invoice", "invoices", "checkout",
+    "cart", "store", "stores", "ecommerce", "eshop", "webshop", "pos",
+    "loyalty", "coupons", "offers", "deals", "promo", "promotions", "campaign",
+    "marketing", "ads", "adserver", "tracking", "analytics", "gtm",
+    "stats", "metrics", "reports", "report", "bi", "dashboards", "kpi",
+    "crm", "erp", "sap", "hr", "hrm", "payroll", "finance", "accounting",
+    "legal", "compliance", "risk", "audit", "soc", "siem", "soc2", "pentest",
+    "bugbounty", "security", "secure2", "vpn2", "wifi", "radius", "ldap",
+    "ad", "adfs", "saml", "okta", "auth0", "keycloak", "identity",
+    "identity-provider", "idp", "sso2", "onelogin", "ping", "pingidentity",
+    "duo", "mfa", "otp", "totp", "recover", "recovery", "reset",
+    "password-reset", "unlock", "verify", "verification", "confirm",
+    "activation", "activate", "invitation", "invite", "join", "recruit",
+    "careers", "jobs", "job", "apply", "intern", "internship", "campus",
+    "training", "learn", "learning", "academy", "university", "school",
+    "education", "course", "courses", "elearning", "lms", "moodle",
+    "canvas", "blackboard", "classroom", "student", "students", "teacher",
+    "faculty", "library", "catalog", "search", "browse", "explore",
+    "news", "newsletter", "press", "media2", "pr", "brand", "brands",
+    "events", "event", "calendar", "schedule", "booking", "bookings",
+    "reservation", "reservations", "ticket2", "tickets2", "cinema",
+    "movie", "movies", "tv", "radio", "music", "audio", "podcast",
+    "photo", "photos", "gallery", "album", "albums", "camera", "live",
+    "live2", "stream", "streaming", "cast", "webcam", "cam", "monitor",
+    "remote2", "access", "access2", "entry", "gateway2", "gw2", "edge2",
+    "core", "core2", "main", "main2", "primary", "secondary", "dr",
+    "dr-site", "failover", "ha", "cluster", "node", "node1", "node2",
+    "worker", "worker1", "queue", "worker2", "scheduler", "cron",
+    "batch", "etl", "pipeline", "airflow", "dagster", "prefect", "luigi",
+    "ml", "mlflow", "jupyter", "notebook", "colab", "gpu", "ai", "ml-api",
+    "inference", "training2", "models", "dataset", "datasets", "data",
+    "data2", "lake", "warehouse", "dwh", "olap", "oltp", "bigdata",
+    "hadoop", "spark", "hive", "presto", "trino", "flink", "storm",
+    "druid", "pinot", "clickhouse", "cassandra", "hbase", "neo4j",
+    "couchdb", "riak", "etcd", "zookeeper", "nats", "pulsar", "rabbitmq",
+    "activemq", "mq", "queue2", "worker3", "scheduler2", "cron2",
+]
+
+
 def run(ctx: ScanContext) -> Tuple[List[str], EngineReport]:
     """Return a deduplicated list of discovered subdomains."""
     out_file = os.path.join(ctx.workdir, "subdomains.txt")
@@ -60,7 +129,11 @@ def run(ctx: ScanContext) -> Tuple[List[str], EngineReport]:
     # --- Pure-Python fallback: DNS brute force over a common-name list ------
     ctx.logger.info("Yerel DNS keşfi çalışıyor (ortak alt alan adları)")
     found: List[str] = []
-    for name in COMMON_SUBDOMAINS:
+    names = list(dict.fromkeys([*COMMON_SUBDOMAINS, *EXTRA_SUBDOMAINS]))
+    if not ctx.deep:
+        # fast mode: keep the probe budget reasonable (~150 DNS lookups)
+        names = names[:150]
+    for name in names:
         host = f"{name}.{ctx.domain}"
         if resolve_host(host):
             found.append(host)
