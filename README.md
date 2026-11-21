@@ -345,6 +345,7 @@ cd backend && DATABASE_URL=postgresql+psycopg2://raven:raven@localhost:5432/rave
 | `POST` | `/api/scans/{id}/report` | `{format: pdf\|json}` → dosya |
 | `GET` | `/api/scans/{id}/report?format=pdf` | Doğrudan indirme |
 | `GET` | `/api/scans/diff?from=&to=` | İki tarama arası bulgu/risk farkı |
+| `GET` | `/api/scanners/status` | subfinder/httpx/katana/nuclei kurulum durumu + sürümler |
 | `GET` | `/api/providers` | Desteklenen AI sağlayıcıları + yapılandırma durumu |
 | `GET` / `PUT` | `/api/settings` | AI seçimi / anahtar / model (anahtarlar maskelenir) |
 | `GET` | `/ws/scans/{id}` | WebSocket canlı log stream |
@@ -406,6 +407,7 @@ Tüm anahtarlar `.env`'e yazılabilir; `cp .env.example .env` ile başlayın.
 | Frontend "Internal Server Error" | Backend değil / build'de `BACKEND_URL` yanlış | `docker compose logs backend`; frontend build arg'ı `http://backend:8000` olmalı |
 | Tarama "failed" oluyor | Tarayıcı hatası / hedef yok | Tarama sayfasındaki loglara bakın; `docker compose logs backend --tail=100` |
 | Bulgular "yerel analiz" diyor | AI anahtarı yok/hatalı veya ağ hatası | Bölüm 4; `GET /api/settings` ile durumu kontrol edin |
+| Tarama **0 bulgu / 0 risk** diyor | Tarayıcı binary'leri yok veya hedef gerçekten temiz | Ana sayfadaki **Tarayıcılar** satırına ve `GET /api/scanners/status`'e bakın; Docker imajını kullanın veya Bölüm 5; tarama sayfasındaki **motor rozetlerini** kontrol edin (builtin/demo ise yerleşik motor sınırlı olabilir) |
 | PDF indirme butonu pasif | Tarama henüz bitmedi | `status: completed` olana kadar bekleyin |
 | Verileri sıfırlamak istiyorum | — | `docker compose down -v` (volume'ları siler) |
 | AI sağlayıcısı listede "✓" yok | Anahtar/URL eksik | Modal'dan anahtar girin ya da `.env`'e ekleyip yeniden başlatın |
@@ -484,7 +486,10 @@ Next.js 15 (3000) ── /api/* proxy ──► FastAPI (8000)
 - **Tek tıkla tarama:** Domain + Tara; yasal onay zorunludur.
 - **Recon:** subfinder ile alt alan, httpx ile canlı kontrol + teknoloji tespiti.
 - **Crawler:** katana ile endpoint ve JavaScript toplama.
-- **Zafiyet taraması:** nuclei ile 9.000+ imza (kritik/yüksek/orta; derin modda +düşük).
+- **Zafiyet taraması:** nuclei ile 9.000+ imza (kritik/yüksek/orta; derin modda
+  +düşük). Binary yoksa **yerleşik mini-scanner** devreye girer: hassas dosyalar,
+  yönetici panelleri, backup'lar, güvenlik başlıkları, CORS/cookie, TRACE, açık
+  redirect, reflected XSS, SQL hatası ve eski yazılım tespiti.
 - **Secret scan:** AWS, GitHub, GitLab, Slack, Google, Stripe, JWT, private key, generic secret.
 - **AI triage:** İstediğiniz sağlayıcıyı seçin — false positive eleme, severity, CVSS,
   sömürü senaryosu, OWASP, fix kodu. Sağlayıcı yoksa yerel analiz devreye girer.

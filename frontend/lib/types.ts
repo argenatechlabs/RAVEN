@@ -80,6 +80,18 @@ export interface ScanDiff {
   risk_delta: number;
 }
 
+export interface ScannerStatusItem {
+  name: string;
+  path: string | null;
+  found: boolean;
+  version: string | null;
+}
+
+export interface ScannersStatus {
+  items: ScannerStatusItem[];
+  demo_mode: boolean;
+}
+
 export interface ProviderInfo {
   id: string;
   label: string;

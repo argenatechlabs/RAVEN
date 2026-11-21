@@ -20,6 +20,18 @@ from app.scanners.types import EndpointResult, SubdomainResult
 
 _LINK_RE = re.compile(r"""(?:href|src|action)\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
 _SCRIPT_SRC_RE = re.compile(r"""<script[^>]+src\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+# Quoted absolute paths inside JS/HTML (API routes, assets).
+_JS_PATH_RE = re.compile(r"""["'](/[A-Za-z0-9_\-./?=&{}:$]{4,})["']""")
+
+
+def _extract_inline_paths(text: str) -> List[str]:
+    paths: List[str] = []
+    for match in _JS_PATH_RE.findall(text or ""):
+        path = match.split("?", 1)[0]
+        if path.endswith((".js", ".mjs", ".css", ".png", ".jpg", ".svg", ".woff", ".woff2")):
+            continue
+        paths.append(match)
+    return paths
 
 
 def _demo_endpoints(alive: List[SubdomainResult]) -> List[EndpointResult]:
@@ -54,7 +66,8 @@ def _crawl_python(alive: List[SubdomainResult], ctx: ScanContext) -> List[Endpoi
             if resp is None or depth >= 2:
                 continue
             base = url.split("://", 1)[-1].split("/", 1)[0]
-            for match in _LINK_RE.findall(resp.text) + _SCRIPT_SRC_RE.findall(resp.text):
+            inline = _extract_inline_paths(resp.text)
+            for match in _LINK_RE.findall(resp.text) + _SCRIPT_SRC_RE.findall(resp.text) + inline:
                 link, _ = urldefrag(match.strip())
                 if not link or link.startswith(("mailto:", "tel:", "javascript:", "#")):
                     continue

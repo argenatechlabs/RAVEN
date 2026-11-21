@@ -132,7 +132,7 @@ def local_analysis(finding: Dict[str, Any]) -> TriageResult:
         severity = "info"
     title = str(finding.get("title") or "")
     tags = list(finding.get("tags") or [])
-    fp = severity in ("info",) or "missing-security-headers" in title.lower()
+    fp = severity == "info"
     cvss = finding.get("cvss")
     try:
         cvss = float(cvss) if cvss is not None else None

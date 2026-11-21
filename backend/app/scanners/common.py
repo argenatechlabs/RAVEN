@@ -158,13 +158,18 @@ class RateLimitedClient:
             },
         )
 
-    def get(self, url: str) -> Optional[httpx.Response]:
+    def get(self, url: str, follow_redirects: bool = True) -> Optional[httpx.Response]:
+        return self.request("GET", url, follow_redirects=follow_redirects)
+
+    def request(
+        self, method: str, url: str, follow_redirects: bool = True
+    ) -> Optional[httpx.Response]:
         delay = self.min_interval - (time.monotonic() - self._last)
         if delay > 0:
             time.sleep(delay)
         self._last = time.monotonic()
         try:
-            return self.client.get(url)
+            return self.client.request(method, url, follow_redirects=follow_redirects)
         except httpx.HTTPError:
             return None
 

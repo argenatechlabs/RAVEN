@@ -389,6 +389,13 @@ def resolve_provider(
 
     if chosen == "auto":
         for candidate in AUTO_PRIORITY:
+            # OpenRouter works keyless only with strict rate limits — skip it in
+            # auto mode unless a key is actually configured.
+            if candidate == "openrouter" and not (
+                get_stored(db, "ai.providers.openrouter.api_key")
+                or _env_key(settings, "openrouter")
+            ):
+                continue
             provider = build_provider(candidate, db, settings)
             if provider is not None:
                 if logger:

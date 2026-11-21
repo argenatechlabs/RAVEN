@@ -185,7 +185,7 @@ class ScanPipeline:
 
                 # 4) vuln scan
                 self._progress(session, scan, "nuclei")
-                vulns, vuln_report = vuln.run(ctx, alive)
+                vulns, vuln_report = vuln.run(ctx, alive, endpoints)
                 logger.info(f"Zafiyet motoru: {vuln_report.engine} — {vuln_report.detail}")
 
                 # 5) secret scan
@@ -214,6 +214,16 @@ class ScanPipeline:
                     },
                 }
                 session.commit()
+
+                if not findings:
+                    logger.warning(
+                        "Tarama 0 bulgu üretti (motorlar: "
+                        f"{recon_report.engine}/{vuln_report.engine}). "
+                        "Scanner binary'leri kuruluysa loglara bakın; "
+                        "kurulu değilse yerleşik motor sınırlı olabilir."
+                    )
+                    scan.meta = {**(scan.meta or {}), "warning": "no_findings"}
+                    session.commit()
 
                 # 6) AI triage
                 self._progress(session, scan, "ai-triage")

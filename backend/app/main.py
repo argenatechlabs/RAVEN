@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import ai_settings, findings, reports, scans
+from app.api import ai_settings, findings, reports, scans, scanners
 from app.config import settings
 from app.core.worker import ScanWorker
 from app.database import init_db
@@ -53,6 +53,7 @@ app.include_router(scans.router)
 app.include_router(findings.router)
 app.include_router(reports.router)
 app.include_router(ai_settings.router)
+app.include_router(scanners.router)
 
 
 @app.get("/api/health", tags=["meta"])

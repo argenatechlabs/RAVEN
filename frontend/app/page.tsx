@@ -16,7 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { ProviderInfo, Scan } from "@/lib/types";
+import type { ProviderInfo, Scan, ScannersStatus } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 import { Spinner, StatusBadge } from "@/components/ui";
 import { AiProviderSelect, AiSettingsModal } from "@/components/ai-settings";
@@ -33,12 +33,18 @@ export default function HomePage() {
   const [providerId, setProviderId] = useState("auto");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [providerError, setProviderError] = useState<string | null>(null);
+  const [scanners, setScanners] = useState<ScannersStatus | null>(null);
 
   const loadAi = useCallback(async () => {
     try {
-      const [prov, st] = await Promise.all([api.getProviders(), api.getSettings()]);
+      const [prov, st, sc] = await Promise.all([
+        api.getProviders(),
+        api.getSettings(),
+        api.getScannersStatus(),
+      ]);
       setProviders(prov.items);
       setProviderId(st.provider || "auto");
+      setScanners(sc);
       setProviderError(null);
     } catch (err) {
       setProviderError(err instanceof ApiError ? err.message : "AI ayarlari yuklenemedi");
@@ -185,6 +191,22 @@ export default function HomePage() {
               <Settings2 className="h-4 w-4" /> API Anahtarı / Model
             </button>
           </div>
+
+          {scanners && (
+            <p className="text-[11px] text-muted">
+              Tarayıcılar:{" "}
+              {scanners.demo_mode
+                ? "DEMO modu (sentetik hedef)"
+                : scanners.items
+                    .map((i) => `${i.name}${i.found ? " ✓" : " ✗"}`)
+                    .join(" · ")}
+              {!scanners.demo_mode && scanners.items.some((i) => !i.found) && (
+                <span className="text-yellow-400">
+                  {" "}— eksikler için yerleşik motor kullanılır
+                </span>
+              )}
+            </p>
+          )}
 
           {(error || providerError) && (
             <p className="rounded-lg border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-400">

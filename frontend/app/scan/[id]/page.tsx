@@ -11,7 +11,7 @@ import {
   Radar,
 } from "lucide-react";
 import { api, downloadReport } from "@/lib/api";
-import type { Finding, Scan, ScanLog, Stats, Subdomain } from "@/lib/types";
+import type { Finding, Scan, ScanLog, ScannersStatus, Stats, Subdomain } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 import { Terminal } from "@/components/terminal";
 import { RiskGauge } from "@/components/risk-gauge";
@@ -45,6 +45,11 @@ export default function ScanPage() {
   const [notFound, setNotFound] = useState(false);
   const [downloading, setDownloading] = useState<"pdf" | "json" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scanners, setScanners] = useState<ScannersStatus | null>(null);
+
+  useEffect(() => {
+    api.getScannersStatus().then(setScanners).catch(() => {});
+  }, []);
 
   const lastLogId = useRef(0);
   const polling = useRef(true);
@@ -170,6 +175,21 @@ export default function ScanPage() {
         </div>
       </div>
 
+      {scanners && (scanners.demo_mode || scanners.items.some((i) => !i.found)) && (
+        <div
+          className={cn(
+            "rounded-lg border px-3 py-2 text-xs",
+            scanners.demo_mode
+              ? "border-neon-dark bg-neon-dark/15 text-neon"
+              : "border-yellow-900 bg-yellow-950/30 text-yellow-300"
+          )}
+        >
+          {scanners.demo_mode
+            ? "DEMO modu aktif — bu tarama sentetik hedef/bulgu üretir. Gerçek tarama için DEMO_MODE=false yapın."
+            : `Tarayıcı binary'leri eksik: ${scanners.items.filter((i) => !i.found).map((i) => i.name).join(", ")}. Yerleşik fallback motoru kullanılır; en iyi sonuç için Docker imajını kullanın (bkz. README Bölüm 2/5).`}
+        </div>
+      )}
+
       {error && (
         <p className="rounded-lg border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-400">
           {error}
@@ -204,6 +224,18 @@ export default function ScanPage() {
               {stats.subdomains_alive}/{stats.subdomains_total} alt alan canlı ·{" "}
               {stats.false_positives} false positive · toplam {totalFindings} bulgu
             </p>
+          )}
+          {stats?.engines && Object.keys(stats.engines).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {Object.entries(stats.engines).map(([stage, engine]) => (
+                <span
+                  key={stage}
+                  className="rounded border border-line bg-black/50 px-1.5 py-0.5 text-[10px] text-muted"
+                >
+                  {stage}: <span className="text-neon-dim">{engine}</span>
+                </span>
+              ))}
+            </div>
           )}
         </div>
         <div className="panel flex items-center justify-center p-4">

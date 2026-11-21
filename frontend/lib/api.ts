@@ -5,6 +5,7 @@ import type {
   ScanDiff,
   ScanListResponse,
   ScanLog,
+  ScannersStatus,
   SettingsState,
   Stats,
   Subdomain,
@@ -89,6 +90,8 @@ export const api = {
 
   getProviders: () =>
     request<{ items: ProviderInfo[]; auto_priority: string[] }>("/providers"),
+
+  getScannersStatus: () => request<ScannersStatus>("/scanners/status"),
 
   getSettings: () => request<SettingsState>("/settings"),
 
