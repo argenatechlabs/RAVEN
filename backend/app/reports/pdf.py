@@ -52,6 +52,8 @@ def _s(text: Any) -> str:
 
 _FONT_REGISTERED = False
 _TTF_OK = False
+FONT = "Helvetica"
+FONT_BOLD = "Helvetica-Bold"
 
 
 def _register_fonts() -> bool:
@@ -81,6 +83,9 @@ def _register_fonts() -> bool:
         pdfmetrics.registerFont(TTFont("RavenSans-Bold", bold))
     except Exception:  # pragma: no cover - platform dependent
         return False
+    global FONT, FONT_BOLD
+    FONT = "RavenSans"
+    FONT_BOLD = "RavenSans-Bold"
     _TTF_OK = True
     return True
 
@@ -113,8 +118,8 @@ def _header_footer(canvas, doc) -> None:
 def _styles() -> dict:
     base = getSampleStyleSheet()
     _register_fonts()
-    font = "RavenSans" if _TTF_OK else "Helvetica"
-    font_bold = "RavenSans-Bold" if _TTF_OK else "Helvetica-Bold"
+    font = FONT
+    font_bold = FONT_BOLD
     styles = {
         "title": ParagraphStyle(
             "rav-title", parent=base["Title"], fontName=font_bold,
@@ -203,8 +208,8 @@ def render_pdf(
     meta.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#111111")),
         ("TEXTCOLOR", (0, 0), (0, -1), NEON),
-        ("FONTNAME", (0, 0), (0, -1), font_bold),
-        ("FONTNAME", (1, 0), (1, -1), font),
+        ("FONTNAME", (0, 0), (0, -1), FONT_BOLD),
+        ("FONTNAME", (1, 0), (1, -1), FONT),
         ("TEXTCOLOR", (1, 0), (1, -1), LIGHT),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#262626")),
@@ -229,7 +234,7 @@ def render_pdf(
     sev_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111111")),
         ("TEXTCOLOR", (0, 0), (-1, 0), NEON),
-        ("FONTNAME", (0, 0), (-1, 0), font_bold),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("TEXTCOLOR", (0, 1), (0, 1), SEVERITY_COLORS["critical"]),
@@ -258,7 +263,7 @@ def render_pdf(
     scope.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111111")),
         ("TEXTCOLOR", (0, 0), (-1, 0), NEON),
-        ("FONTNAME", (0, 0), (-1, 0), font_bold),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#262626")),

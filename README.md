@@ -116,6 +116,9 @@ curl http://localhost:8000/api/health
 
 ### Yaygın çalıştırma komutları
 
+> Tüm bunların kısayolu: `make up`, `make logs`, `make down`, `make test`
+> (bkz. `Makefile`).
+
 ```bash
 docker compose up --build          # ön planda başlat (logları gösterir)
 docker compose up -d --build       # arka planda başlat
@@ -342,6 +345,7 @@ cd backend && DATABASE_URL=postgresql+psycopg2://raven:raven@localhost:5432/rave
 | `GET` | `/api/scans/{id}/subdomains` | `?alive=true` |
 | `GET` | `/api/scans/{id}/stats` | Severity dağılımı, risk, motor bilgisi |
 | `GET` | `/api/scans/{id}/logs` | `?after_id=` canlı log akışı |
+| `GET` | `/api/scans/{id}/events` | **SSE** canlı log akışı (proxy dostu) |
 | `POST` | `/api/scans/{id}/report` | `{format: pdf\|json}` → dosya |
 | `GET` | `/api/scans/{id}/report?format=pdf` | Doğrudan indirme |
 | `GET` | `/api/scans/diff?from=&to=` | İki tarama arası bulgu/risk farkı |
@@ -366,6 +370,9 @@ curl http://localhost:8000/api/scans/1 | jq '.status, .progress, .risk_score'
 
 # 3) Loglar (polling)
 curl "http://localhost:8000/api/scans/1/logs?after_id=0" | jq '.items[-3:]'
+
+# 3b) Loglar (SSE — proxy arkasında da çalışır)
+curl -N http://localhost:8000/api/scans/1/events
 
 # 4) Bulgular (false positive'lar hariç)
 curl "http://localhost:8000/api/scans/1/findings?severity=critical" | jq '.items'
@@ -392,8 +399,27 @@ curl -X POST http://localhost:8000/api/scans/1/report \
 | `DATABASE_URL` | `postgresql+psycopg2://…` | Compose otomatik ayarlar |
 | `REDIS_URL` | `redis://redis:6379/0` | Compose otomatik ayarlar |
 | `CORS_ORIGINS` | `["*"]` | API CORS ayarları |
+| `API_KEY` | boş | Dolu ise tüm `/api/*` (health hariç) `X-API-Key` / `Bearer` ister |
+| `API_RATE_LIMIT` / `API_RATE_LIMIT_RPM` | `true` / `120` | İstek başına düşen dakikalık API limiti |
+| `SCAN_RATE_LIMIT_RPM` | `20` | `POST /api/scans` için dakikalık limit |
+| `TRUST_PROXY` | `false` | Proxy arkasında `X-Forwarded-For` baz alınır |
+| `REQUEST_RATE_LIMIT` | `10` | Hedefe giden maks. istek/sn |
+| `SCAN_CONCURRENCY` | `1` (SQLite) / `2` (compose) | Aynı anda çalışan tarama sayısı |
+| `BUILTIN_MAX_HOSTS` / `BUILTIN_PARAM_BUDGET` | `15` / `40` | Yerleşik motorun host ve parametre prob bütçesi |
+| `SCAN_COOKIE` / `SCAN_HEADERS` | boş | İzinli tarama için oturum çerezi / özel başlıklar |
 
 Tüm anahtarlar `.env`'e yazılabilir; `cp .env.example .env` ile başlayın.
+
+### API güvenliği
+
+- **Rate limit:** Her istemci IP için kayan pencere. Limit aşılırsa `429` +
+  `Retry-After` döner; `X-RateLimit-*` başlıkları her yanıtta görünür.
+- **API anahtarı:** `API_KEY` dolu ise `/api/health` hariç tüm uçlar
+  `X-API-Key: <anahtar>` veya `Authorization: Bearer <anahtar>` ister.
+  Sıfır güvenlikli yerel kullanım için boş bırakın.
+- **Yanıt başlıkları:** `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, `Permissions-Policy` her yanıta eklenir.
+- **Tarama onayı:** `POST /api/scans` zorunlu `authorized: true` ister (403 yoksa).
 
 ---
 
@@ -465,11 +491,11 @@ Next.js 15 (3000) ── /api/* proxy ──► FastAPI (8000)
                                       Redis kuyruğu
                                           │
                                           ▼
-                              Worker (arka plan thread)
-        recon → httpx → katana → nuclei → secrets → AI triage → PostgreSQL
+                              Worker (arka plan thread, N=SCAN_CONCURRENCY)
+     recon → httpx → TLS → katana → nuclei+builtin → secrets → AI triage → PostgreSQL
                                           │
                                           ▼
-                              Canlı log (DB + WebSocket) / Frontend polling
+                          Canlı log (DB + SSE/WebSocket) → Frontend
 ```
 
 - **Backend:** Python 3.11, FastAPI, SQLAlchemy 2.0, Alembic, Redis.
@@ -487,22 +513,49 @@ Next.js 15 (3000) ── /api/* proxy ──► FastAPI (8000)
 - **Recon:** subfinder ile alt alan, httpx ile canlı kontrol + teknoloji tespiti.
 - **Crawler:** katana ile endpoint ve JavaScript toplama.
 - **Zafiyet taraması:** nuclei ile 9.000+ imza (kritik/yüksek/orta; derin modda
-  +düşük). Binary yoksa **yerleşik mini-scanner** devreye girer: hassas dosyalar,
-  yönetici panelleri, backup'lar, güvenlik başlıkları, CORS/cookie, TRACE, açık
-  redirect, reflected XSS, SQL hatası ve eski yazılım tespiti.
-- **Secret scan:** AWS, GitHub, GitLab, Slack, Google, Stripe, JWT, private key, generic secret.
-- **AI triage:** İstediğiniz sağlayıcıyı seçin — false positive eleme, severity, CVSS,
-  sömürü senaryosu, OWASP, fix kodu. Sağlayıcı yoksa yerel analiz devreye girer.
-- **Canlı ilerleme:** polling + WebSocket, canlı log terminali, risk skoru.
-- **Sonuçlar:** severity filtresi, arama, false positive gösterimi, detay drawer.
-- **Harita:** Subdomain ağacı görselleştirmesi.
+  +düşük). Binary yoksa **yerleşik mini-scanner** devreye girer: 70+ hassas
+  dosya/yol (`.git`, `.env`, backup, SQL dump, phpinfo, actuator, Tomcat/JBoss/
+  WebLogic/Jenkins/Grafana/Kibana/ES konsolları, swagger/openapi, phpMyAdmin…),
+  güvenlik başlıkları, directory listing, CORS/cookie, TRACE, açık redirect,
+  reflected XSS, SQL hatası, **parametre probu** (XSS/SQLi/LFI/RCE/open-redirect),
+  eski yazılım (Apache 2.4.49/50 CVE dahil) ve **TLS sertifika/protokol** kontrolü.
+- **Secret scan:** 46 desen — AWS, GitHub (tüm türler), GitLab, Slack, Google,
+  Stripe, Twilio, SendGrid, Mailgun, Discord, Telegram, Shopify, npm/PyPI/Docker,
+  Azure, connection string, private key, JWT, internal IP/host, email, S3 URL.
+- **AI triage:** İstediğiniz sağlayıcıyı seçin — false positive eleme, severity,
+  CVSS, **confidence**, sömürü senaryosu, OWASP, fix kodu. Sağlayıcı yoksa yerel
+  analiz devreye girer; bozuk LLM yanıtı bir kez yeniden denelenir.
+- **Canlı ilerleme:** **SSE** akışı (proxy dostu) + otomatik polling yedeği,
+  WebSocket uç noktası, canlı log terminali (aktif transport rozetli), risk skoru.
+- **Sonuçlar:** severity filtresi, arama, sıralama, false positive gösterimi, detay drawer.
+- **Harita:** Subdomain ağacı + **treemap** görselleştirmesi.
+- **Güvenlik:** İstemci başına rate limit (429 + `Retry-After`), opsiyonel API
+  anahtarı, güvenlik başlıkları, zorunlu tarama onayı.
 - **Rapor:** Tek tıkla PDF (reportlab) ve JSON export.
 - **Geçmiş:** Liste, filtre, tekrar tara, iki tarama arası diff.
 - **Hata yönetimi:** Binary yoksa fallback motor, hatalar loglanır.
 
 ---
 
-## 11. Veritabanı şeması
+## 11. Testler ve CI
+
+```bash
+# Backend (42 test: motorlar, API, rapor, güvenlik, AI)
+cd backend && .venv/bin/python -m pytest
+
+# Frontend (tip kontrolü + üretim derlemesi)
+cd frontend && npm run build
+
+# Ya da Makefile ile
+make test
+```
+
+CI (`.github/workflows/ci.yml`) her push/PR'de backend testlerini ve frontend
+derlemesini çalıştırır. Gerekli bağımlılıklar `backend/requirements-dev.txt`.
+
+---
+
+## 12. Veritabanı şeması
 
 - **scans:** `id, target_domain, scan_type, status, progress, current_stage,
   risk_score, authorized, error, meta, created_at, completed_at`
