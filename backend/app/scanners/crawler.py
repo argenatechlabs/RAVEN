@@ -58,11 +58,15 @@ def _crawl_python(alive: List[SubdomainResult], ctx: ScanContext) -> List[Endpoi
         queue = [(f"{scheme}://{h.subdomain}", 0)
                  for h in alive for scheme in ("https", "http")]
         max_depth = 3 if ctx.deep else 2
-        while queue and len(seen) < ctx.settings.max_endpoints:
+        visited: set = set()
+        # Bound the crawl so a busy target cannot run for the full timeout.
+        budget = min(ctx.settings.max_endpoints, 400)
+        while queue and len(visited) < budget:
             url, depth = queue.pop(0)
-            if url in seen:
+            if url in seen or url in visited:
                 continue
             seen.add(url)
+            visited.add(url)
             resp = client.get(url)
             if resp is None or resp.status_code >= 400:
                 continue
