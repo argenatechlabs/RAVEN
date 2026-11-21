@@ -64,16 +64,17 @@ class ScanCreated(BaseModel):
 def validate_domain(domain: str) -> str:
     domain = domain.strip().lower()
     domain = re.sub(r"^https?://", "", domain)
-    domain = domain.split("/")[0].split(":")[0]
-    if len(domain) > MAX_DOMAIN_LEN or not DOMAIN_RE.match(domain):
+    domain = domain.split("/")[0]
+    host = domain.split(":")[0]
+    if len(host) > MAX_DOMAIN_LEN or not DOMAIN_RE.match(host):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Gecersiz domain formati (ornek: example.com)",
+            detail="Gecersiz domain formati (ornek: example.com veya localhost:8080)",
         )
-    if "." not in domain:
+    if "." not in host and ":" not in domain:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Domain en az bir nokta icermelidir",
+            detail="Domain en az bir nokta icermeli veya port belirtilmelidir",
         )
     return domain
 

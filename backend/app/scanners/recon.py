@@ -126,6 +126,13 @@ def run(ctx: ScanContext) -> Tuple[List[str], EngineReport]:
             )
         ctx.logger.warning("subfinder sonuç döndürmedi, yerel keşfe geçiliyor")
 
+    # Local target (host:port) — no subdomain brute force possible.
+    if ":" in ctx.domain:
+        host = ctx.domain.split(":", 1)[0]
+        write_lines(out_file, [ctx.domain])
+        ctx.logger.success(f"Yerel hedef: {ctx.domain}")
+        return [ctx.domain], EngineReport(engine="builtin-dns", detail="yerel hedef")
+
     # --- Pure-Python fallback: DNS brute force over a common-name list ------
     ctx.logger.info("Yerel DNS keşfi çalışıyor (ortak alt alan adları)")
     found: List[str] = []
