@@ -17,21 +17,47 @@ ARG HTTPX_VERSION=v1.12.0
 ARG KATANA_VERSION=v1.8.0
 ARG NUCLEI_VERSION=v3.11.1
 
+# Each download is best-effort: a blocked/slow GitHub must not break the whole
+# image build. Missing binaries simply mean the pure-Python engines are used
+# (their status is reported honestly by /api/scanners/status).
 RUN set -eux; \
     fetch() { \
-      curl -fsSL --retry 3 -o "/tmp/$1.zip" "$2"; \
-      unzip -o -q "/tmp/$1.zip" -d /tmp/"$1"; \
-      install -m 0755 "/tmp/$1/$1" "/usr/local/bin/$1"; \
-      rm -rf "/tmp/$1" "/tmp/$1.zip"; \
+      name="$1"; url="$2"; \
+      if curl -fsSL --retry 3 --connect-timeout 20 -o "/tmp/${name}.zip" "$url"; then \
+        unzip -o -q "/tmp/${name}.zip" -d "/tmp/${name}"; \
+        bin=""; \
+        for candidate in "/tmp/${name}/${name}" "/tmp/${name}/"*/"${name}"; do \
+          if [ -f "$candidate" ]; then bin="$candidate"; break; fi; \
+        done; \
+        if [ -n "$bin" ]; then \
+          install -m 0755 "$bin" "/usr/local/bin/${name}"; \
+          echo "[raven] ${name} kuruldu"; \
+        else \
+          echo "[raven] UYARI: ${name} arsivi beklenen binary'yi icermiyor"; \
+        fi; \
+        rm -rf "/tmp/${name}" "/tmp/${name}.zip"; \
+      else \
+        echo "[raven] UYARI: ${name} indirilemedi; yerlesik Python motoru kullanilacak"; \
+      fi; \
     }; \
     fetch subfinder "https://github.com/projectdiscovery/subfinder/releases/download/${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION#v}_linux_amd64.zip"; \
     fetch httpx "https://github.com/projectdiscovery/httpx/releases/download/${HTTPX_VERSION}/httpx_${HTTPX_VERSION#v}_linux_amd64.zip"; \
     fetch katana "https://github.com/projectdiscovery/katana/releases/download/${KATANA_VERSION}/katana_${KATANA_VERSION#v}_linux_amd64.zip"; \
     fetch nuclei "https://github.com/projectdiscovery/nuclei/releases/download/${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION#v}_linux_amd64.zip"; \
-    subfinder -version; httpx -version; katana -version; nuclei -version
+    for tool in subfinder httpx katana nuclei; do \
+      if command -v "$tool" >/dev/null 2>&1; then \
+        echo "[raven] ${tool}: $(command -v "$tool")"; \
+      else \
+        echo "[raven] EKSIK: ${tool} (yerlesik motor devrede)"; \
+      fi; \
+    done
 
 # Pre-download nuclei templates so the image works without extra setup.
-RUN nuclei -update-templates || echo "nuclei templates will be fetched on first use"
+RUN if command -v nuclei >/dev/null 2>&1; then \
+        nuclei -update-templates || echo "nuclei templates will be fetched on first use"; \
+    else \
+        echo "nuclei yok; sablonlar ilk kullanımda indirilecek"; \
+    fi
 
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
