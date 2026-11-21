@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { TerminalSquare } from "lucide-react";
 import type { ScanLog } from "@/lib/types";
+import type { LogTransport } from "@/lib/use-live-logs";
 import { cn, formatTime } from "@/lib/utils";
 
 const LEVEL_CLASS: Record<string, string> = {
@@ -13,7 +14,15 @@ const LEVEL_CLASS: Record<string, string> = {
   success: "text-neon",
 };
 
-export function Terminal({ logs, scanning }: { logs: ScanLog[]; scanning: boolean }) {
+export function Terminal({
+  logs,
+  scanning,
+  transport = "idle",
+}: {
+  logs: ScanLog[];
+  scanning: boolean;
+  transport?: LogTransport;
+}) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
@@ -27,7 +36,19 @@ export function Terminal({ logs, scanning }: { logs: ScanLog[]; scanning: boolea
       <div className="flex items-center gap-2 border-b border-line px-3 py-2">
         <TerminalSquare className="h-4 w-4 text-neon" />
         <span className="label-neon">Canlı Log</span>
-        <span className="ml-auto flex gap-1.5">
+        <span
+          className={cn(
+            "ml-auto rounded border px-1.5 py-0.5 font-mono text-[10px]",
+            transport === "sse"
+              ? "border-neon-dim bg-neon-dark/30 text-neon"
+              : transport === "polling"
+                ? "border-yellow-900 bg-yellow-950/30 text-yellow-300"
+                : "border-line text-zinc-500"
+          )}
+        >
+          {transport === "sse" ? "SSE" : transport === "polling" ? "YOKLAMA" : "—"}
+        </span>
+        <span className="flex gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
           <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
           <span className="h-2.5 w-2.5 rounded-full bg-green-500/70" />

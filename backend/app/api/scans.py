@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from typing import Any, Dict, List, Optional
 
@@ -20,7 +21,6 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.pipeline import ScanPipeline
 from app.core.security import scan_write_limit
 from app.core.worker import ScanWorker
 from app.database import get_db
@@ -106,7 +106,12 @@ def create_scan(
     )
     db.add(scan)
     db.commit()
-    db.refresh(scan)
+    try:
+        db.refresh(scan)
+    except Exception:
+        # Concurrent writers can expire the row; the id is what matters here.
+        db.rollback()
+        scan = db.get(Scan, scan.id)
 
     mode = "none"
     if worker is not None:
@@ -115,7 +120,9 @@ def create_scan(
         except Exception:
             mode = "none"
     if mode == "none" and settings.allow_inline_scans:
-        background_tasks.add_task(ScanPipeline(scan.id, settings, bus).run)
+        from app.core.scan_lock import run_pipeline
+
+        background_tasks.add_task(run_pipeline, scan.id, settings, bus)
 
     return ScanCreated(id=scan.id, status=scan.status.value,
                        target_domain=scan.target_domain)
@@ -215,6 +222,68 @@ def get_logs(
     )
     logs = [row.to_dict() for row in rows]
     return {"items": logs, "last_id": logs[-1]["id"] if logs else after_id}
+
+
+@router.get("/api/scans/{scan_id}/events")
+async def scan_events(scan_id: int):
+    """Server-Sent Events stream of live scan logs.
+
+    Works through ordinary HTTP proxies (unlike WebSockets), so the browser can
+    subscribe through the Next.js rewrite. The WebSocket endpoint remains
+    available for direct connections.
+    """
+    from fastapi.responses import StreamingResponse
+
+    db = next(get_db())
+    try:
+        scan = db.get(Scan, scan_id)
+        if scan is None:
+            raise HTTPException(status_code=404, detail="Tarama bulunamadi")
+    finally:
+        db.close()
+
+    async def generate():
+        db = next(get_db())
+        try:
+            history = (
+                db.execute(
+                    select(ScanLog)
+                    .where(ScanLog.scan_id == scan_id)
+                    .order_by(ScanLog.id.asc())
+                    .limit(500)
+                )
+                .scalars()
+                .all()
+            )
+            for row in history:
+                payload = json.dumps({"type": "log", "log": row.to_dict()}, default=str)
+                yield f"data: {payload}\n\n"
+            yield "event: ready\ndata: {}\n\n"
+
+            queue = bus.subscribe(scan_id)
+            try:
+                while True:
+                    try:
+                        log = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    except asyncio.TimeoutError:
+                        yield ": ping\n\n"
+                        continue
+                    payload = json.dumps({"type": "log", "log": log}, default=str)
+                    yield f"data: {payload}\n\n"
+            finally:
+                bus.unsubscribe(scan_id, queue)
+        finally:
+            db.close()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.websocket("/ws/scans/{scan_id}")

@@ -86,6 +86,8 @@ class Settings(BaseSettings):
     builtin_max_hosts: int = 15
     # Requests per host spent on parameter probing (keeps fast scans bounded).
     builtin_param_budget: int = 40
+    # How many scan pipelines may run at the same time.
+    scan_concurrency: int = 1
     nuclei_severities: str = "critical,high,medium"
     nuclei_templates_dir: Optional[str] = None
     # Optional authenticated scanning: JSON header object and/or a cookie

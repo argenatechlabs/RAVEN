@@ -6,21 +6,27 @@ from typing import Iterator
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import QueuePool
 
 from app.config import settings
 
-_connect_args = {"check_same_thread": False} if settings.sqlite else {}
-_poolclass = StaticPool if settings.sqlite else None
+_connect_args = (
+    {"check_same_thread": False, "timeout": 30} if settings.sqlite else {}
+)
 
 engine_kwargs = {
     "url": settings.database_url,
     "future": True,
-    "pool_pre_ping": not settings.sqlite,
+    "pool_pre_ping": True,
     "connect_args": _connect_args,
 }
-if _poolclass is not None:
-    engine_kwargs["poolclass"] = _poolclass
+if settings.sqlite:
+    # One connection per thread (unlike StaticPool) plus WAL + busy timeout,
+    # which keeps concurrent request/scan sessions from corrupting each other.
+    engine_kwargs["poolclass"] = QueuePool
+    engine_kwargs["pool_size"] = 5
+    engine_kwargs["max_overflow"] = 10
+    engine_kwargs["pool_timeout"] = 30
 
 engine = create_engine(**engine_kwargs)
 
@@ -33,6 +39,11 @@ if settings.sqlite:
     def _set_sqlite_pragma(dbapi_connection, connection_record):  # pragma: no cover
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
         cursor.close()
 
 

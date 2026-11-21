@@ -13,6 +13,7 @@ from app.ai.provider import resolve_provider
 from app.ai.reporter import generate_executive_summary
 from app.ai.triage import triage_findings
 from app.config import Settings
+from app.core.scan_lock import acquire_scan_slot
 from app.database import SessionLocal
 from app.logger import LogBus, ScanLogger
 from app.models import Finding, Scan, ScanStatus, Severity, Subdomain

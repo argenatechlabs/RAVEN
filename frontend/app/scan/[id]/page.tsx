@@ -11,7 +11,8 @@ import {
   Radar,
 } from "lucide-react";
 import { api, downloadReport } from "@/lib/api";
-import type { Finding, Scan, ScanLog, ScannersStatus, Stats, Subdomain } from "@/lib/types";
+import type { Finding, Scan, ScannersStatus, Stats, Subdomain } from "@/lib/types";
+import { useLiveLogs } from "@/lib/use-live-logs";
 import { cn, formatDate } from "@/lib/utils";
 import { Terminal } from "@/components/terminal";
 import { RiskGauge } from "@/components/risk-gauge";
@@ -40,31 +41,18 @@ export default function ScanPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [subdomains, setSubdomains] = useState<Subdomain[]>([]);
-  const [logs, setLogs] = useState<ScanLog[]>([]);
   const [selected, setSelected] = useState<Finding | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [downloading, setDownloading] = useState<"pdf" | "json" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanners, setScanners] = useState<ScannersStatus | null>(null);
+  const [liveActive, setLiveActive] = useState(true);
 
   useEffect(() => {
     api.getScannersStatus().then(setScanners).catch(() => {});
   }, []);
 
-  const lastLogId = useRef(0);
   const polling = useRef(true);
-
-  const loadLogs = useCallback(async () => {
-    try {
-      const res = await api.getLogs(id, lastLogId.current, 300);
-      if (res.items.length) {
-        lastLogId.current = res.last_id;
-        setLogs((prev) => [...prev, ...res.items].slice(-600));
-      }
-    } catch {
-      /* yoksay */
-    }
-  }, [id]);
 
   const loadAll = useCallback(async () => {
     try {
@@ -75,6 +63,7 @@ export default function ScanPage() {
       setSubdomains(data.subdomains);
       if (data.status === "completed" || data.status === "failed") {
         polling.current = false;
+        setLiveActive(false);
       }
     } catch (err) {
       if (err && typeof err === "object" && (err as { status?: number }).status === 404) {
@@ -86,20 +75,16 @@ export default function ScanPage() {
     }
   }, [id]);
 
+  const { logs, transport } = useLiveLogs(id, liveActive);
+
   useEffect(() => {
     loadAll();
-    loadLogs();
     const timer = setInterval(() => {
       if (!polling.current) return;
       loadAll();
-      loadLogs();
     }, 2000);
     return () => clearInterval(timer);
-  }, [loadAll, loadLogs]);
-
-  useEffect(() => {
-    if (scan?.status === "completed" || scan?.status === "failed") loadLogs();
-  }, [scan?.status, loadLogs]);
+  }, [loadAll]);
 
   const handleDownload = async (format: "pdf" | "json") => {
     setDownloading(format);
@@ -252,7 +237,7 @@ export default function ScanPage() {
       {/* Main grid */}
       <div className="grid gap-4 lg:grid-cols-12">
         <div className="lg:col-span-4">
-          <Terminal logs={logs} scanning={scanning} />
+          <Terminal logs={logs} scanning={scanning} transport={transport} />
         </div>
         <div className="lg:col-span-5">
           <FindingsTable findings={findings} onSelect={setSelected} />

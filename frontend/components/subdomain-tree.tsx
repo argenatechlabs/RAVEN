@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Globe, GlobeLock, Server } from "lucide-react";
+import { ChevronRight, Globe, GlobeLock, LayoutGrid, Server, Workflow } from "lucide-react";
 import type { Subdomain } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { SubdomainTreemap } from "./subdomain-treemap";
 
 interface TreeNode {
   label: string;
@@ -123,6 +124,7 @@ function Node({
 
 export function SubdomainTree({ subdomains }: { subdomains: Subdomain[] }) {
   const tree = useMemo(() => buildTree(subdomains), [subdomains]);
+  const [view, setView] = useState<"tree" | "map">("tree");
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(["__root__", ...tree.children.keys()])
   );
@@ -147,15 +149,39 @@ export function SubdomainTree({ subdomains }: { subdomains: Subdomain[] }) {
 
   return (
     <div className="panel flex h-full min-h-[320px] flex-col overflow-hidden">
-      <div className="border-b border-line px-3 py-2">
-        <span className="label-neon">Alt Alan Ağacı</span>
+      <div className="flex items-center border-b border-line px-3 py-2">
+        <span className="label-neon">Alt Alan</span>
         <span className="ml-2 text-[10px] text-muted">
           {alive}/{subdomains.length} canlı
         </span>
+        <div className="ml-auto flex gap-1">
+          <button
+            onClick={() => setView("tree")}
+            className={cn(
+              "rounded p-1 transition",
+              view === "tree" ? "text-neon" : "text-zinc-600 hover:text-zinc-400"
+            )}
+            title="Ağaç görünümü"
+          >
+            <Workflow className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setView("map")}
+            className={cn(
+              "rounded p-1 transition",
+              view === "map" ? "text-neon" : "text-zinc-600 hover:text-zinc-400"
+            )}
+            title="Treemap görünümü"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         {subdomains.length === 0 ? (
           <p className="p-3 text-xs text-muted">Henüz subdomain yok.</p>
+        ) : view === "map" ? (
+          <SubdomainTreemap subdomains={subdomains} />
         ) : (
           <ul>
             {[...tree.children.values()].map((child) => (

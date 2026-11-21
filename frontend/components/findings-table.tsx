@@ -24,6 +24,7 @@ export function FindingsTable({
   const [filter, setFilter] = useState<Severity | "all">("all");
   const [query, setQuery] = useState("");
   const [showFp, setShowFp] = useState(false);
+  const [sort, setSort] = useState<"severity" | "cvss" | "title">("severity");
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: 0, critical: 0, high: 0, medium: 0, low: 0 };
@@ -37,13 +38,24 @@ export function FindingsTable({
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return findings.filter((f) => {
+    const filtered = findings.filter((f) => {
       if (f.is_false_positive && !showFp) return false;
       if (filter !== "all" && f.severity !== filter) return false;
       if (q && !(`${f.title} ${f.url || ""}`.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [findings, filter, query, showFp]);
+    const order: Record<string, number> = {
+      critical: 0, high: 1, medium: 2, low: 3, info: 4,
+    };
+    return [...filtered].sort((a, b) => {
+      if (sort === "title") return a.title.localeCompare(b.title);
+      if (sort === "cvss") return (b.cvss ?? -1) - (a.cvss ?? -1);
+      return (
+        (order[a.severity] ?? 9) - (order[b.severity] ?? 9) ||
+        (b.cvss ?? -1) - (a.cvss ?? -1)
+      );
+    });
+  }, [findings, filter, query, showFp, sort]);
 
   return (
     <div className="panel flex h-full flex-col overflow-hidden">
@@ -78,14 +90,26 @@ export function FindingsTable({
             </button>
           ))}
         </div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Bulgu veya URL ara…"
-            className="input-neon py-2 pl-9 text-sm"
-          />
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Bulgu veya URL ara…"
+              className="input-neon py-2 pl-9 text-sm"
+            />
+          </div>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as typeof sort)}
+            className="input-neon px-2 py-2 text-xs"
+            title="Sıralama"
+          >
+            <option value="severity">Öncelik</option>
+            <option value="cvss">CVSS</option>
+            <option value="title">Ad</option>
+          </select>
         </div>
       </div>
 

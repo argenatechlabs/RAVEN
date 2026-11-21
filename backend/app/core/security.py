@@ -11,6 +11,7 @@ entries so it cannot grow without bound.
 """
 from __future__ import annotations
 
+import json
 import threading
 import time
 from collections import defaultdict, deque
@@ -107,33 +108,70 @@ def reset_limiters() -> None:
         _LIMITERS.clear()
 
 
-def _enforce(request: Request, scope: str, limit: int, window: float) -> Optional[dict]:
-    """Shared enforcement used by both the middleware and the route dependency."""
+def _check(
+    request: Request, scope: str, limit: int, window: float
+) -> Tuple[Optional[dict], Optional[Response]]:
+    """Return ``(headers, error_response)`` — exactly one of them is set.
+
+    Kept free of exceptions so it can be used from middleware (where raising
+    ``HTTPException`` would escape Starlette's exception handling and surface as
+    a 500) as well as from route dependencies.
+    """
     if not settings.api_rate_limit:
-        return None
+        return None, None
     limiter = get_limiter(scope, limit, window)
     decision = limiter.allow(f"{scope}:{client_key(request)}")
     if decision.allowed:
         return {
             "X-RateLimit-Limit": str(decision.limit),
             "X-RateLimit-Remaining": str(decision.remaining),
-        }
+        }, None
     retry = str(int(decision.retry_after))
-    raise HTTPException(
+    body = {
+        "detail": f"Cok fazla istek: {scope} limiti asildi. "
+                  f"{retry} sn sonra tekrar deneyin."
+    }
+    headers = {
+        "Retry-After": retry,
+        "X-RateLimit-Limit": str(decision.limit),
+    }
+    return None, Response(
+        content=json.dumps(body),
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail=f"Cok fazla istek: {scope} limiti asildi. {retry} sn sonra tekrar deneyin.",
-        headers={"Retry-After": retry, "X-RateLimit-Limit": str(decision.limit)},
+        media_type="application/json",
+        headers=headers,
+    )
+
+
+def _raise_from_response(response: Optional[Response]) -> None:
+    if response is None:
+        return
+    import json as _json
+
+    try:
+        detail = _json.loads(response.body.decode("utf-8")).get("detail", "Asim")
+    except Exception:  # pragma: no cover - defensive
+        detail = "Asim"
+    headers = {
+        key: value
+        for key, value in response.headers.items()
+        if key.lower() in ("retry-after", "x-ratelimit-limit")
+    }
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=detail, headers=headers
     )
 
 
 def scan_write_limit(request: Request) -> None:
     """Stricter budget for scan creation (the expensive operation)."""
-    _enforce(request, "scan-write", settings.scan_rate_limit_rpm, 60.0)
+    _, response = _check(request, "scan-write", settings.scan_rate_limit_rpm, 60.0)
+    _raise_from_response(response)
 
 
 def api_write_limit(request: Request) -> None:
     """Budget for other mutating calls (settings, report rendering)."""
-    _enforce(request, "api-write", settings.api_rate_limit_rpm // 2, 60.0)
+    _, response = _check(request, "api-write", settings.api_rate_limit_rpm // 2, 60.0)
+    _raise_from_response(response)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -147,7 +185,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path.startswith("/ws/") or path in self.skip_paths or not path.startswith("/api/"):
             return await call_next(request)
-        headers = _enforce(request, "api", settings.api_rate_limit_rpm, 60.0)
+        headers, rejection = _check(request, "api", settings.api_rate_limit_rpm, 60.0)
+        if rejection is not None:
+            return rejection
         response = await call_next(request)
         if headers:
             for name, value in headers.items():

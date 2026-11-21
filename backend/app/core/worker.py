@@ -87,9 +87,9 @@ class ScanWorker:
 
     def _execute(self, scan_id: int) -> None:
         try:
-            from app.core.pipeline import ScanPipeline
+            from app.core.scan_lock import run_pipeline
 
-            ScanPipeline(scan_id, self.settings, self.bus).run()
+            run_pipeline(scan_id, self.settings, self.bus)
         except Exception:
             import logging
 
