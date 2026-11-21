@@ -1,4 +1,6 @@
-const backend = process.env.BACKEND_URL || "http://backend:8000";
+// Local development talks to the FastAPI service on localhost; docker-compose
+// overrides this with `BACKEND_URL=http://backend:8000` (see frontend/Dockerfile).
+const backend = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
