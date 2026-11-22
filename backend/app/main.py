@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import ai_settings, findings, reports, scans, scanners
+from app.api import active_checks, ai_settings, findings, reports, scans, scanners
 from app.config import settings
 from app.core.security import install_security, require_api_key
 from app.core.worker import ScanWorker
@@ -55,6 +55,8 @@ install_security(app)
 # Everything except /api/health is behind the optional API-key gate so the
 # container healthcheck keeps working even when a key is configured.
 _authenticated = [Depends(require_api_key)]
+app.include_router(active_checks.callback_router)
+app.include_router(active_checks.router, dependencies=_authenticated)
 app.include_router(scans.router, dependencies=_authenticated)
 app.include_router(findings.router, dependencies=_authenticated)
 app.include_router(reports.router, dependencies=_authenticated)

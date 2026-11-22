@@ -19,10 +19,16 @@ export interface Scan {
     ai_provider?: string;
     warning?: string;
     client_inventory?: ClientInventory;
+    active_checks?: ActiveChecksResult;
   };
   created_at: string | null;
   completed_at: string | null;
   finding_count?: number;
+}
+
+export interface ActiveChecksResult {
+  timestamp: string;
+  items: { category: string; url: string; status: string; detail: string; tested: boolean; baseline_status?: number | null; test_status?: number | null }[];
 }
 
 export interface ClientInventory {

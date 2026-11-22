@@ -1,5 +1,6 @@
 import type {
   Finding,
+  ActiveChecksResult,
   ProviderInfo,
   Scan,
   ScanDiff,
@@ -51,7 +52,18 @@ export interface CreateScanInput {
   ai_provider?: string;
 }
 
+export interface ActiveChecksInput {
+  authorized_active: boolean;
+  csrf?: { url: string; fields: Record<string, string>; token_field: string };
+  upload?: { url: string; fields: Record<string, string>; file_field: string };
+  ssrf?: { url: string; parameter: string };
+  business?: { url: string; fields: Record<string, string>; parameter: string; baseline: string; variant: string };
+}
+
 export const api = {
+  runActiveChecks: (id: number | string, input: ActiveChecksInput) =>
+    request<ActiveChecksResult>(`/scans/${id}/active-checks`, { method: "POST", body: JSON.stringify(input) }),
+
   createScan: (input: CreateScanInput) =>
     request<Scan>("/scans", { method: "POST", body: JSON.stringify(input) }),
 

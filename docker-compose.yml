@@ -76,6 +76,10 @@ services:
       SCAN_CONCURRENCY: ${SCAN_CONCURRENCY:-2}
       REQUEST_RATE_LIMIT: ${REQUEST_RATE_LIMIT:-10}
       TRUST_PROXY: ${TRUST_PROXY:-false}
+      OAST_PUBLIC_URL: ${OAST_PUBLIC_URL:-}
+      OAST_ALLOW_HTTP: ${OAST_ALLOW_HTTP:-false}
+      SCAN_HEADERS: '${SCAN_HEADERS:-}'
+      SCAN_COOKIE: '${SCAN_COOKIE:-}'
     volumes:
       - raven_data:/app/data
     networks: [raven]

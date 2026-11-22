@@ -345,6 +345,14 @@ def render_pdf(
                     f"{_clip(item.get('reason'), 250)}", styles["body"]))
             if len(reviews) > 15:
                 story.append(_p("Diğer adaylar JSON raporunda bulunur.", styles["body"]))
+    active = (scan.get("meta") or {}).get("active_checks")
+    if active and active.get("items"):
+        story.append(_p("Operatör Onaylı Aktif Testler", styles["h2"]))
+        story.append(_p("HTTP yanıtları ve geri çağrı tek başına açık veya etki doğrulaması değildir.", styles["body"]))
+        for item in active["items"][:4]:
+            story.append(_p(
+                f"{_clip(item.get('category'), 40)} — {_clip(item.get('url'), 180)}: "
+                f"{_clip(item.get('status'), 40)}. {_clip(item.get('detail'), 250)}", styles["body"]))
     story.append(Spacer(1, 4 * mm))
 
     # --- Findings table ------------------------------------------------------

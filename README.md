@@ -665,8 +665,50 @@ getirmek değildir. Dosyalar hassas veri içerebilir; izole ortamda inceleyin.
 
 CSRF, SSRF, dosya yükleme ve iş mantığı için form alanları ve URL
 parametrelerinden **manuel inceleme adayları** listelenir. Bunlar test
-edilmiş açıklar değildir: form gönderilmez, dosya yüklenmez, harici
-servise SSRF isteği başlatılmaz ve iş işlemi değiştirilmez. Bu kategorilerin
-aktif doğrulaması bu sürümde yoktur. Yerleşik SQL/XSS kontrolleri normal
+edilmiş açıklar değildir: bu pasif aşamada form gönderilmez, dosya yüklenmez,
+harici servise SSRF isteği başlatılmaz ve iş işlemi değiştirilmez. Ayrı,
+operatör onaylı aktif testler aşağıda açıklanmıştır. Yerleşik SQL/XSS kontrolleri normal
 yanıtla karşılaştırır; hata veya yansıma bulunması sömürü doğrulaması değildir.
 Eski taramaların yeni envanter bilgileri için yeniden taranması gerekebilir.
+
+### Operatör onaylı aktif testler
+
+Tamamlanmış taramanın **Aktif doğrulama** bölümünde yalnızca tek tek girilen
+endpointler, ayrı onayla test edilir; keşfedilmiş tüm formlar otomatik
+çalıştırılmaz. Yalnızca taranan host ve port kabul edilir, yönlendirmeler takip
+edilmez. API: `POST /api/scans/{id}/active-checks`; `authorized_active: true`
+zorunludur. Test URL'leri ve form alanları uygulamaya kullanıcı tarafından
+verilir; form değerleri ve URL sorguları sonuçlara kaydedilmez. Sunucu
+`SCAN_HEADERS` / `SCAN_COOKIE` değerleri yalnız aynı kapsam içindeki hedefe
+gönderilir. Bu ayarları ve tarama sonuçlarını yetkisiz erişimden koruyun.
+
+- CSRF: normal token içeren bir POST ve token çıkarılmış, farklı Origin'li
+  ikinci POST gönderilir. İki başarılı HTTP yanıtı **CSRF kanıtı değildir**:
+  oturumun geçerliliği, tarayıcı çerez politikası ve gerçek durum değişikliği
+  ayrıca incelenmelidir.
+- Dosya yükleme: zararsız rastgele isimli bir `.txt` dosyası gönderilir.
+  Sunucu dosyayı veya başka test artığını kalıcı tutabilir; temizleme operatörün
+  sorumluluğundadır. Başarılı HTTP yanıtı yükleme açığı kanıtı değildir.
+- İş mantığı: operatörün belirttiği normal ve değiştirilmiş değerlerle iki
+  POST gönderilir. Yanıt kodları iş kuralının kırıldığını kanıtlamaz.
+- SSRF: operatörün seçtiği GET parametresine tek kullanımlık geri çağrı URL'si
+  konur; yalnız beş saniye içinde bu URL'ye gelen bir HTTP isteği gözlemlenir.
+  Geri çağrı gözlenmesi isteğin kaynağını veya zararlı etkiyi tek başına
+  ispatlamaz; geri çağrı olmaması da güvenli olduğu anlamına gelmez.
+
+**CSRF, yükleme ve iş mantığı testleri gerçek veri oluşturabilir veya
+değiştirebilir.** Yalnız geri alınabilir, özel test endpointleri ve test
+hesaplarıyla kullanın; sonuçta yanıt dışındaki sunucu durumunu ve varsa
+artıkları manuel doğrulayın. Test alanlarının değerleri üçüncü taraf AI'a
+aktarılmaz; test sonuçları ayrı gözlem olarak JSON/PDF'de yer alır ve risk
+puanına otomatik dahil edilmez.
+
+SSRF geri çağrısı için `.env` dosyasında `OAST_PUBLIC_URL` değerini **kendi
+kontrolünüzdeki**, hedefin erişebildiği bu RAVEN backend'ine yönlenen HTTPS
+origin/base URL olarak ayarlayın ve reverse proxy'nin
+`/api/oast/callback/` yolunu geçirmesini sağlayın. Genel internete backend'i
+kontrolsüz açmayın; ilgili yolu sınırlandırın ve uygulamanın diğer API'lerini
+`API_KEY` ve ağ kurallarıyla koruyun. Tek kullanımlık, kısa ömürlü callback
+route'u API anahtarı istemez; token ve istekler proxy erişim loglarına
+yansıyabilir, logları koruyun. `OAST_ALLOW_HTTP=true` yalnız yerel test içindir.
+Bağlantı kurulamazsa sistem yanıtı `inconclusive` olarak bırakır.

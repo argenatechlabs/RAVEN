@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     # string, e.g. SCAN_HEADERS='{"X-Auth":"abc"}' SCAN_COOKIE='session=xyz'.
     scan_headers: str = ""
     scan_cookie: str = ""
+    # Externally reachable HTTPS base URL of this backend for OAST callbacks.
+    oast_public_url: str = ""
+    # Development/test only; production callbacks should use HTTPS.
+    oast_allow_http: bool = False
 
     # --- Demo / offline mode ------------------------------------------------
     # Generates a realistic synthetic target so the UI, AI triage, reporting
@@ -131,14 +135,12 @@ class Settings(BaseSettings):
     @property
     def header_map(self) -> Dict[str, str]:
         """Parse ``SCAN_HEADERS`` (JSON object) into a header dict."""
-        if not self.scan_headers.strip():
-            return {}
         try:
-            data = json.loads(self.scan_headers)
+            data = json.loads(self.scan_headers) if self.scan_headers.strip() else {}
         except (ValueError, TypeError):
-            return {}
+            data = {}
         if not isinstance(data, dict):
-            return {}
+            data = {}
         headers = {str(k): str(v) for k, v in data.items() if v is not None}
         if self.scan_cookie.strip():
             headers["Cookie"] = self.scan_cookie.strip()

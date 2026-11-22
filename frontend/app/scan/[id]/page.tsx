@@ -19,6 +19,7 @@ import { RiskGauge } from "@/components/risk-gauge";
 import { SubdomainTree } from "@/components/subdomain-tree";
 import { FindingsTable } from "@/components/findings-table";
 import { FindingDrawer } from "@/components/finding-drawer";
+import { ActiveChecks } from "@/components/active-checks";
 import { ProgressBar, Spinner, StatusBadge } from "@/components/ui";
 
 const STAGE_LABEL: Record<string, string> = {
@@ -271,6 +272,7 @@ export default function ScanPage() {
           <details className="text-xs text-zinc-300"><summary className="cursor-pointer text-neon-dim">JavaScript / OpenAPI yol adayları</summary><ul className="mt-2 space-y-1 break-all">{scan.meta.client_inventory.api_paths.map((path) => <li key={path}>{path}</li>)}</ul></details>
         </section>
       )}
+      {scan?.status === "completed" && <ActiveChecks id={id} results={scan.meta?.active_checks} onCompleted={() => { void loadAll(); }} />}
       <FindingDrawer finding={selected} onClose={() => setSelected(null)} />
     </div>
   );
