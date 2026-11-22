@@ -17,6 +17,12 @@ from app.models import ScanLog
 
 Subscriber = Tuple[asyncio.AbstractEventLoop, "asyncio.Queue[Dict[str, Any]]"]
 
+def clean_text(value: Any) -> Any:
+    """Replace NUL, which PostgreSQL rejects in text and JSON strings."""
+    if isinstance(value, str):
+        return value.replace("\x00", " ")
+    return value
+
 
 class LogBus:
     def __init__(self) -> None:
@@ -71,7 +77,7 @@ class ScanLogger:
         self.bus = bus_ or bus
 
     def log(self, level: str, message: str) -> None:
-        message = str(message)
+        message = clean_text(str(message))
         try:
             self.session.add(ScanLog(scan_id=self.scan_id, level=level, message=message))
             self.session.commit()

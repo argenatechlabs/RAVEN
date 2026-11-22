@@ -34,6 +34,41 @@ jobs:
         working-directory: backend
         run: python -m pytest
 
+  backend-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: raven
+          POSTGRES_PASSWORD: raven
+          POSTGRES_DB: raven_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U raven -d raven_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://raven:raven@127.0.0.1:5432/raven_test
+      DEMO_MODE: "true"
+      SCANNER_BIN_DIR: /nonexistent
+      API_RATE_LIMIT: "false"
+      DATA_DIR: ./data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+      - name: Test pipeline persistence on PostgreSQL
+        working-directory: backend
+        run: python -m pytest tests/test_pipeline.py
+
   frontend:
     runs-on: ubuntu-latest
     steps:

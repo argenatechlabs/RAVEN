@@ -188,7 +188,7 @@ def run(ctx: ScanContext, subdomains: List[str]) -> Tuple[List[SubdomainResult],
         if result.returncode == 127:
             ctx.logger.warning("httpx bulunamadı, yerel proba geçiliyor")
         elif not result.ok:
-            ctx.logger.warning(f"httpx hatası: {result.stderr.strip()[:300]}")
+            ctx.logger.warning(f"httpx hatası: {result.error_detail()}")
         alive = _parse_httpx_jsonl(out_file, ctx.logger)
         if alive:
             ctx.logger.success(f"httpx: {len(alive)} canlı host, teknoloji algılandı")

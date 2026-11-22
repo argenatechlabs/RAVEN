@@ -31,6 +31,11 @@ class CmdResult:
     def ok(self) -> bool:
         return self.returncode == 0
 
+    def error_detail(self, limit: int = 300) -> str:
+        """Include the exit status even when a tool emits no stderr."""
+        detail = self.stderr.strip()[:limit] or "stderr boş"
+        return f"çıkış kodu {self.returncode}; {detail}"
+
 
 @dataclass
 class EngineReport:

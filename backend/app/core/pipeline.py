@@ -16,11 +16,20 @@ from app.ai.triage import triage_findings
 from app.config import Settings
 from app.core.scan_lock import acquire_scan_slot
 from app.database import SessionLocal
-from app.logger import LogBus, ScanLogger
+from app.logger import LogBus, ScanLogger, clean_text as _clean_text
 from app.models import Finding, Scan, ScanStatus, Severity, Subdomain
 from app.scanners import crawler, recon, secrets, tech, tls, vuln
 from app.scanners.context import ScanContext
 from app.scanners.types import SecretResult, SubdomainResult, VulnResult
+
+def _clean_obj(value: Any) -> Any:
+    """Clean strings, including keys, in JSON-bound scanner output."""
+    if isinstance(value, dict):
+        return {_clean_text(k): _clean_obj(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_clean_obj(v) for v in value]
+    return _clean_text(value)
+
 
 STAGE_PROGRESS = {
     "recon": 15,
@@ -119,13 +128,13 @@ class ScanPipeline:
             rows.append(
                 Subdomain(
                     scan_id=scan.id,
-                    subdomain=host,
-                    ip=info.ip if info else None,
+                    subdomain=_clean_text(host),
+                    ip=_clean_text(info.ip) if info else None,
                     is_alive=bool(info),
-                    technologies=info.technologies if info else [],
+                    technologies=_clean_obj(info.technologies if info else []),
                     ports=info.ports if info else [],
                     status_code=info.status_code if info else None,
-                    title=info.title if info else None,
+                    title=_clean_text(info.title) if info else None,
                 )
             )
         session.bulk_save_objects(rows)
@@ -145,14 +154,15 @@ class ScanPipeline:
                 Finding(
                     scan_id=scan.id,
                     type="vulnerability",
-                    title=v.name,
+                    title=_clean_text(v.name),
                     severity=_severity(v.severity),
                     cvss=v.cvss,
-                    url=v.url,
-                    evidence=v.evidence,
-                    source=engine,
-                    raw={"template_id": v.template_id, "tags": v.tags,
-                         "description": v.description},
+                    url=_clean_text(v.url),
+                    evidence=_clean_text(v.evidence),
+                    source=_clean_text(engine),
+                    raw={"template_id": _clean_text(v.template_id),
+                         "tags": _clean_obj(v.tags),
+                         "description": _clean_text(v.description)},
                 )
             )
         for s in secrets:
@@ -160,13 +170,13 @@ class ScanPipeline:
                 Finding(
                     scan_id=scan.id,
                     type="secret",
-                    title=f"Sir Fitili: {s.secret_type}",
+                    title=_clean_text(f"Sir Fitili: {s.secret_type}"),
                     severity=_severity(SECRET_SEVERITY.get(s.secret_type, "medium")),
                     cvss=None,
-                    url=s.url,
-                    evidence=f"{s.match}\n{s.context}",
+                    url=_clean_text(s.url),
+                    evidence=_clean_text(f"{s.match}\n{s.context}"),
                     source="secret-scan",
-                    raw={"secret_type": s.secret_type, "line": s.line},
+                    raw={"secret_type": _clean_text(s.secret_type), "line": s.line},
                 )
             )
         session.bulk_save_objects(rows)
@@ -253,7 +263,7 @@ class ScanPipeline:
                 findings = self._save_findings(
                     session, scan, vulns, secret_findings, vuln_report.engine
                 )
-                scan.meta = {
+                scan.meta = _clean_obj({
                     **(scan.meta or {}),
                     "engines": {
                         "recon": recon_report.engine,
@@ -270,7 +280,7 @@ class ScanPipeline:
                         "vulnerabilities": len(vulns),
                         "secrets": len(secret_findings),
                     },
-                }
+                })
                 session.commit()
 
                 if not findings:
@@ -297,10 +307,10 @@ class ScanPipeline:
                         self.settings, logger, db=session,
                         provider_id=(scan.meta or {}).get("ai_provider"),
                     )
-                scan.meta = {
+                scan.meta = _clean_obj({
                     **(scan.meta or {}),
                     "ai": {"provider": provider.name, "model": provider.model},
-                }
+                })
                 session.commit()
                 payload = [
                     {
@@ -324,10 +334,10 @@ class ScanPipeline:
                         continue
                     f.severity = _severity(result.severity)
                     f.is_false_positive = result.is_false_positive
-                    f.ai_analysis = result.reason
-                    f.exploit_scenario = result.exploit_scenario
-                    f.fix_code = result.fix_code
-                    f.owasp_category = result.owasp_category
+                    f.ai_analysis = _clean_text(result.reason)
+                    f.exploit_scenario = _clean_text(result.exploit_scenario)
+                    f.fix_code = _clean_text(result.fix_code)
+                    f.owasp_category = _clean_text(result.owasp_category)
                     if result.cvss is not None:
                         f.cvss = result.cvss
                     raw = dict(f.raw or {})
@@ -344,7 +354,10 @@ class ScanPipeline:
                 summary = generate_executive_summary(
                     scan.to_dict(), finding_rows, sub_rows, provider, logger
                 )
-                scan.meta = {**(scan.meta or {}), "executive_summary": summary}
+                scan.meta = _clean_obj({
+                    **(scan.meta or {}),
+                    "executive_summary": summary,
+                })
                 scan.status = ScanStatus.completed
                 scan.progress = 100
                 scan.current_stage = "completed"
@@ -358,7 +371,7 @@ class ScanPipeline:
                 session.rollback()
                 scan = session.get(Scan, self.scan_id)
                 scan.status = ScanStatus.failed
-                scan.error = f"{type(exc).__name__}: {exc}"
+                scan.error = _clean_text(f"{type(exc).__name__}: {exc}")
                 scan.completed_at = datetime.utcnow()
                 session.commit()
                 logger.error(f"Tarama basarisiz: {scan.error}")

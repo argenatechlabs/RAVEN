@@ -151,7 +151,7 @@ def run(
         if result.returncode == 127:
             ctx.logger.warning("katana bulunamadı, yerel crawler'a geçiliyor")
         elif not result.ok:
-            ctx.logger.warning(f"katana hatası: {result.stderr.strip()[:300]}")
+            ctx.logger.warning(f"katana hatası: {result.error_detail()}")
         urls = sorted(set(read_lines(out_file)))
         if urls:
             endpoints = [EndpointResult(url=u, is_js=is_js_url(u)) for u in urls]

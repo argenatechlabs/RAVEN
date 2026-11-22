@@ -94,3 +94,73 @@ def test_reporter_local_summary_mentions_engines():
     )
     assert "subfinder" in summary
     assert "nuclei" in summary
+
+
+def test_scanner_data_with_nul_is_saved(db, demo_scan, settings_override):
+    from app.core.pipeline import ScanPipeline
+    from app.logger import ScanLogger
+    from app.models import Subdomain, ScanLog
+    from app.scanners.types import SecretResult, SubdomainResult, VulnResult
+
+    pipeline = ScanPipeline(demo_scan.id, settings_override())
+    host = "acme.example.com"
+    pipeline._save_subdomains(db, demo_scan, [host], [SubdomainResult(
+        subdomain=host, title="başlık\x00sonu", technologies=["teknoloji\x00x"]
+    )])
+    found = pipeline._save_findings(db, demo_scan, [VulnResult(
+        template_id="template\x00x", name="Güvenlik\x00bulgusu", severity="high",
+        url="https://example.com/\x00test", evidence="metin\x00son\nTürkçe",
+        description="açıklama\x00x", tags=["etiket\x00x"]
+    )], [SecretResult(url="https://example.com/\x00app.js", secret_type="token\x00x",
+                      match="abc\x00def", context="içerik\x00son")])
+    assert len(found) == 2
+    assert found[0].title == "Güvenlik bulgusu"
+    assert found[0].evidence == "metin son\nTürkçe"
+    assert found[0].raw == {"template_id": "template x", "tags": ["etiket x"], "description": "açıklama x"}
+    assert found[1].evidence == "abc def\niçerik son"
+    saved_host = db.query(Subdomain).filter_by(scan_id=demo_scan.id).one()
+    assert saved_host.title == "başlık sonu"
+    assert saved_host.technologies == ["teknoloji x"]
+    ScanLogger(db, demo_scan.id).info("log\x00satırı")
+    assert db.query(ScanLog).filter_by(scan_id=demo_scan.id).one().message == "log satırı"
+
+
+def test_pipeline_cleans_ai_output_and_completes(db, demo_scan, settings_override, monkeypatch):
+    from app.ai.triage import TriageResult
+    from app.core import pipeline as module
+    from app.models import Scan, ScanStatus
+
+    def triage(items, *_args):
+        return {item["id"]: TriageResult(
+            severity="high", is_false_positive=False, reason="neden\x00son",
+            cvss=7.0, exploit_scenario="senaryo\x00son", fix_code="çözüm\x00son",
+            owasp_category="OWASP\x00son", provider="test"
+        ) for item in items}
+
+    monkeypatch.setattr(module, "triage_findings", triage)
+    monkeypatch.setattr(module, "generate_executive_summary", lambda *_args: "özet\x00son")
+    module.ScanPipeline(demo_scan.id, settings_override(demo_mode=True, ai_provider="local")).run()
+    db.expire_all()
+    scan = db.get(Scan, demo_scan.id)
+    assert scan.status == ScanStatus.completed
+    assert scan.meta["executive_summary"] == "özet son"
+    assert scan.findings
+    for finding in scan.findings:
+        assert (finding.ai_analysis, finding.exploit_scenario, finding.fix_code, finding.owasp_category) == (
+            "neden son", "senaryo son", "çözüm son", "OWASP son"
+        )
+
+
+def test_json_cleaning_handles_nested_keys_and_preserves_text():
+    from app.core.pipeline import _clean_obj
+
+    assert _clean_obj({"key\x00x": ["metin\x00son\nTürkçe", {"nested": "\x00"}]}) == {
+        "key x": ["metin son\nTürkçe", {"nested": " "}]
+    }
+
+
+def test_command_failure_includes_exit_code_when_stderr_empty():
+    from app.scanners.common import CmdResult
+
+    result = CmdResult(argv=["httpx"], returncode=2, stdout="", stderr="")
+    assert result.error_detail() == "çıkış kodu 2; stderr boş"

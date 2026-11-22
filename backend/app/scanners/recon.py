@@ -120,7 +120,7 @@ def run(ctx: ScanContext) -> Tuple[List[str], EngineReport]:
         if result.returncode == 127:
             ctx.logger.warning("subfinder bulunamadı, yerel keşfe geçiliyor")
         elif not result.ok:
-            ctx.logger.warning(f"subfinder hata döndürdü: {result.stderr.strip()[:300]}")
+            ctx.logger.warning(f"subfinder hata döndürdü: {result.error_detail()}")
         subs = sorted(set(read_lines(out_file)))
         if subs:
             ctx.logger.success(f"subfinder: {len(subs)} subdomain bulundu")

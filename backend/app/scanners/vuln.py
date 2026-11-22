@@ -901,7 +901,7 @@ def _ensure_nuclei_templates(ctx: ScanContext, binary: str) -> Optional[str]:
     )
     if result.ok and os.path.isdir(default_dir):
         return default_dir
-    ctx.logger.warning(f"nuclei şablonları güncellenemedi: {result.stderr.strip()[:200]}")
+    ctx.logger.warning(f"nuclei şablonları güncellenemedi: {result.error_detail(200)}")
     return configured
 
 
@@ -947,7 +947,7 @@ def run(
         if result.returncode == 127:
             ctx.logger.warning("nuclei bulunamadı, yerel taramaya geçiliyor")
         elif not result.ok:
-            ctx.logger.warning(f"nuclei hatası: {result.stderr.strip()[:300]}")
+            ctx.logger.warning(f"nuclei hatası: {result.error_detail()}")
         findings = _parse_nuclei_jsonl(out_file, ctx.logger) + extra
         if findings:
             # Merge with the built-in engine instead of replacing it: nuclei and
