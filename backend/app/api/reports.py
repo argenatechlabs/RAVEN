@@ -1,10 +1,11 @@
 """PDF / JSON report generation and download."""
 from __future__ import annotations
 
+import os
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -99,3 +100,17 @@ def _build(scan_id: int, fmt: str, db: Session):
         content=payload,
         headers={"Content-Disposition": f'attachment; filename="{_filename(scan, "json")}"'},
     )
+
+
+@router.get("/api/scans/{scan_id}/client-inventory/archive")
+def client_inventory_archive(scan_id: int, db: Session = Depends(get_db)):
+    scan = db.get(Scan, scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Tarama bulunamadi")
+    if not (scan.meta or {}).get("client_inventory", {}).get("archive_available"):
+        raise HTTPException(status_code=404, detail="İstemci arşivi bulunamadı")
+    path = os.path.join(settings.data_dir, "scans", str(scan.id), "client-inventory.zip")
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="İstemci arşivi bulunamadı")
+    return FileResponse(path, media_type="application/zip", filename=f"raven-client-inventory-{scan.id}.zip",
+                        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"})

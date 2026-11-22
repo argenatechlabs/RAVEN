@@ -18,10 +18,21 @@ export interface Scan {
     ai?: { provider: string; model: string };
     ai_provider?: string;
     warning?: string;
+    client_inventory?: ClientInventory;
   };
   created_at: string | null;
   completed_at: string | null;
   finding_count?: number;
+}
+
+export interface ClientInventory {
+  status: string;
+  archive_available: boolean;
+  files: { url: string; file: string; content_type: string; bytes: number }[];
+  forms: { page: string; action: string; method: string; fields: string[] }[];
+  api_paths: string[];
+  parameters: string[];
+  source_maps: { url: string; sources: string[]; embedded_sources: number }[];
 }
 
 export interface Finding {
@@ -39,6 +50,8 @@ export interface Finding {
   is_false_positive: boolean;
   owasp_category: string | null;
   source: string;
+  ai_provider?: string | null;
+  ai_confidence?: number | null;
 }
 
 export interface Subdomain {

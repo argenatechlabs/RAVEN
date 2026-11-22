@@ -162,7 +162,9 @@ def _scan_text(url: str, text: str, findings: List[SecretResult], seen: set) -> 
                         secret_type=name,
                         match=_mask(raw),
                         line=line_no,
-                        context=line.strip()[:300],
+                        # Do not leak the raw secret (or other credentials on
+                        # the same line) into the DB, logs, API or report.
+                        context=f"Satır {line_no}: eşleşme maskelendi",
                     )
                 )
 
@@ -200,7 +202,9 @@ def run(
     seen = set()
     try:
         for ep in unique:
-            resp = client.get(ep.url)
+            if ctx.expired():
+                break
+            resp = client.get(ep.url, follow_redirects=False)
             if resp is None or resp.status_code >= 400:
                 continue
             ctype = resp.headers.get("content-type", "")

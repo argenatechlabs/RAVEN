@@ -630,3 +630,23 @@ ayakta kalır. Migration'ı tamamen atlamak için `SKIP_MIGRATIONS=true` verin.
 <p align="center">
   <sub>bugbounty · pentest · nuclei · security · ai · automation</sub>
 </p>
+
+### İstemci kaynak envanteri (yetkili hedefler)
+
+Tarama, süre ve kapsam izin verdiğinde sayfalar, JavaScript/CSS ve keşfedilen
+source map'leri inceleyerek form alanlarını, URL parametrelerini ve JavaScript
+veya erişilmiş OpenAPI belgelerinden API yolu **adaylarını** listeler. JavaScript içinden çıkarılan adaylar ayrıca çağrılmaz; gözlemler bulgu veya
+güvenlik açığı olarak değerlendirilmez. Crawler tarafından keşfedilen
+sayfalar ve belgeler envanter için GET ile istenebilir.
+Envanter en fazla 30 isteği, dosya başına 1 MiB, toplam 8 MiB ve 30 saniyeyi
+kullanır; mevcut tarama bütçesi önce biterse sonuçlar kısmi olabilir. Sadece
+canlı keşfedilen host ve portlara doğrudan istek yapılır, yönlendirme izlenmez.
+Kimlik bilgileri envanter isteklerine eklenmez.
+
+Sonuç ekranındaki **Kaynak arşivi**, ham ve güvenilmeyen dosyaları adreslerini
+`manifest.json` içinde eşleyerek ZIP olarak sunar. Dosyalar gizli anahtarlar
+veya kişisel veri içerebilir; yalnızca yetkili kişilerle paylaşın ve güvenli
+şekilde saklayın. **Arşivi çalıştırmayın veya güvenilir bir origin'de
+barındırmayın.** Bu çalışan bir site klonu değildir: sunucu kodu, veritabanı,
+iş mantığı, giriş sonrası içerik ve keşfedilemeyen varlıklar dahil değildir.
+Mevcut dosyaları güzelleştirme/çalışan siteyi yeniden oluşturma bu sürümde yoktur.

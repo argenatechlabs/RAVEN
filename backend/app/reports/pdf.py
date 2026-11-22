@@ -327,6 +327,14 @@ def render_pdf(
     # --- Executive summary ---------------------------------------------------
     story.append(_p("Yönetici Özeti", styles["h2"]))
     story.extend(_md_to_flowables(executive_summary, styles))
+    inventory = (scan.get("meta") or {}).get("client_inventory")
+    if inventory:
+        story.append(_p("İstemci Kaynak Envanteri", styles["h2"]))
+        story.append(_p(
+            f"Durum: {_s(inventory.get('status'))}; dosya: {len(inventory.get('files') or [])}; "
+            f"form: {len(inventory.get('forms') or [])}; API yolu adayı: {len(inventory.get('api_paths') or [])}; "
+            f"source map: {len(inventory.get('source_maps') or [])}. "
+            "Bunlar gözlemdir; doğrulanmış güvenlik açığı veya tam site kopyası değildir.", styles["body"]))
     story.append(Spacer(1, 4 * mm))
 
     # --- Findings table ------------------------------------------------------
@@ -403,6 +411,8 @@ def render_pdf(
             block.append(_p("<b>False Positive</b> olarak isaretlendi.", styles["body"]))
         if f.get("url"):
             block.append(_p(f"URL: {_s(f.get('url'))}", styles["cell"]))
+        if f.get("ai_provider"):
+            block.append(_p(f"Analiz motoru: {_s(f.get('ai_provider'))}; AI güveni: {_s(f.get('ai_confidence'))} (doğrulama değildir)", styles["cell"]))
         if f.get("ai_analysis"):
             block.append(_p(f"<b>AI Analizi:</b> {_s(f.get('ai_analysis'))}", styles["body"]))
         if f.get("exploit_scenario"):

@@ -158,3 +158,13 @@ def test_builtin_vuln_engine_finds_exposed_files():
         assert "Exposed .env File" in names
     finally:
         thread.join(timeout=1)
+
+
+def test_secret_evidence_does_not_leak_unmasked_line():
+    from app.scanners.secrets import _scan_text
+
+    raw = 'AKIAIOSFODNN7EXAMPLE'
+    results = []
+    _scan_text('https://example.com/app.js', f'const key = "{raw}";', results, set())
+    assert results
+    assert all(raw not in result.match and raw not in result.context for result in results)

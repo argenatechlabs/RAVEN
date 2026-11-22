@@ -18,7 +18,7 @@ from app.core.scan_lock import acquire_scan_slot
 from app.database import SessionLocal
 from app.logger import LogBus, ScanLogger, clean_text as _clean_text
 from app.models import Finding, Scan, ScanStatus, Severity, Subdomain
-from app.scanners import crawler, recon, secrets, tech, tls, vuln
+from app.scanners import client_inventory, crawler, recon, secrets, tech, tls, vuln
 from app.scanners.context import ScanContext
 from app.scanners.types import SecretResult, SubdomainResult, VulnResult
 
@@ -248,6 +248,17 @@ class ScanPipeline:
                 endpoints, crawl_report = crawler.run(ctx, alive)
                 logger.info(f"Crawler motoru: {crawl_report.engine} — {crawl_report.detail}")
 
+                # Bounded passive inventory of public client files; never execute
+                # target code and do not let an inventory failure lose the scan.
+                try:
+                    inventory = client_inventory.run(ctx, alive, endpoints)
+                    scan.meta = _clean_obj({**(scan.meta or {}), "client_inventory": inventory})
+                    session.commit()
+                    logger.info(f"İstemci envanteri: {len(inventory['files'])} dosya ({inventory['status']})")
+                except Exception as exc:
+                    session.rollback()
+                    logger.warning(f"İstemci envanteri oluşturulamadı: {type(exc).__name__}: {exc}")
+
                 # 4) vuln scan
                 self._progress(session, scan, "nuclei")
                 vulns, vuln_report = vuln.run(
@@ -343,6 +354,7 @@ class ScanPipeline:
                     raw = dict(f.raw or {})
                     raw["confidence"] = result.confidence
                     raw["ai_attempts"] = result.attempts
+                    raw["ai_provider"] = result.provider
                     f.raw = raw
                 session.commit()
 

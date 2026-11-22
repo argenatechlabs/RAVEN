@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import re
 from typing import List, Tuple
-from urllib.parse import urldefrag, urljoin
+from urllib.parse import urldefrag, urljoin, urlsplit
 
 from app.scanners.common import (
     EngineReport,
@@ -83,12 +83,12 @@ def _crawl_python(alive: List[SubdomainResult], ctx: ScanContext) -> List[Endpoi
                 continue
             seen.add(url)
             visited.add(url)
-            resp = client.get(url)
+            resp = client.get(url, follow_redirects=False)
             if resp is None or resp.status_code >= 400:
                 continue
             if depth >= max_depth:
                 continue
-            base = url.split("://", 1)[-1].split("/", 1)[0]
+            base = urlsplit(url).netloc.lower()
             inline = _extract_inline_paths(resp.text)
             links = _LINK_RE.findall(resp.text) + _SCRIPT_SRC_RE.findall(resp.text) + inline
             # robots.txt / sitemap.xml are goldmines for a crawler.
@@ -104,7 +104,8 @@ def _crawl_python(alive: List[SubdomainResult], ctx: ScanContext) -> List[Endpoi
                 if not link or link.startswith(("mailto:", "tel:", "javascript:", "#")):
                     continue
                 absolute = urljoin(url, link)
-                if base not in absolute:
+                parsed = urlsplit(absolute)
+                if parsed.scheme not in ("http", "https") or parsed.netloc.lower() != base:
                     continue
                 if absolute not in seen:
                     results.append(EndpointResult(url=absolute, is_js=is_js_url(absolute)))

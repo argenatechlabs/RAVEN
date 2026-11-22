@@ -149,6 +149,8 @@ def test_pipeline_cleans_ai_output_and_completes(db, demo_scan, settings_overrid
         assert (finding.ai_analysis, finding.exploit_scenario, finding.fix_code, finding.owasp_category) == (
             "neden son", "senaryo son", "çözüm son", "OWASP son"
         )
+        assert finding.to_dict()["ai_provider"] == "test"
+        assert finding.to_dict()["ai_confidence"] == 0.5
 
 
 def test_json_cleaning_handles_nested_keys_and_preserves_text():

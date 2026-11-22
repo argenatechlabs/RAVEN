@@ -247,6 +247,23 @@ export default function ScanPage() {
         </div>
       </div>
 
+      {scan?.meta?.client_inventory && (
+        <section className="panel space-y-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="label-neon">İstemci kaynak envanteri · {scan.meta.client_inventory.status}</h2>
+            {scan.meta.client_inventory.archive_available && (
+              <a className="btn-ghost text-xs" href={`/api/scans/${id}/client-inventory/archive`} download>
+                <Download className="h-4 w-4" /> Kaynak arşivi
+              </a>
+            )}
+          </div>
+          <p className="text-xs text-yellow-300">Bu arşiv güvenilmeyen, hassas veri içerebilen ham istemci dosyalarıdır. Çalıştırmayın veya güvenilir bir sunucuda yayınlamayın. Sunucu kodu ve veritabanı içermez; çalışan bir site kopyası değildir.</p>
+          <p className="text-xs text-muted">{scan.meta.client_inventory.files.length} dosya · {scan.meta.client_inventory.forms.length} form · {scan.meta.client_inventory.api_paths.length} API yolu adayı · {scan.meta.client_inventory.source_maps.length} source map. Adaylar doğrulanmış güvenlik açığı değildir.</p>
+          <details className="text-xs text-zinc-300"><summary className="cursor-pointer text-neon-dim">Dosyalar ve source map’ler</summary><ul className="mt-2 space-y-1 break-all">{scan.meta.client_inventory.files.map((file) => <li key={file.file}>{file.url} — {file.bytes} bayt</li>)}{scan.meta.client_inventory.source_maps.map((map) => <li key={map.url}>Source map: {map.sources.length} kaynak, {map.embedded_sources} gömülü içerik — {map.url}<ul className="ml-4 text-muted">{map.sources.map((source, i) => <li key={i}>{source}</li>)}</ul></li>)}</ul></details>
+          <details className="text-xs text-zinc-300"><summary className="cursor-pointer text-neon-dim">Formlar ve parametreler</summary><ul className="mt-2 space-y-1 break-all">{scan.meta.client_inventory.forms.map((form, i) => <li key={i}>{form.method} {form.action} · {form.fields.join(", ")}</li>)}<li>URL parametreleri: {scan.meta.client_inventory.parameters.join(", ") || "yok"}</li></ul></details>
+          <details className="text-xs text-zinc-300"><summary className="cursor-pointer text-neon-dim">JavaScript / OpenAPI yol adayları</summary><ul className="mt-2 space-y-1 break-all">{scan.meta.client_inventory.api_paths.map((path) => <li key={path}>{path}</li>)}</ul></details>
+        </section>
+      )}
       <FindingDrawer finding={selected} onClose={() => setSelected(null)} />
     </div>
   );
