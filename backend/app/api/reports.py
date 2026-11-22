@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import zipfile
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,6 +17,7 @@ from app.core.security import api_write_limit
 from app.database import get_db
 from app.models import Scan, ScanStatus
 from app.reports.pdf import render_pdf
+from app.reports.reconstruction import build as build_reconstruction
 
 router = APIRouter()
 
@@ -114,3 +116,23 @@ def client_inventory_archive(scan_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="İstemci arşivi bulunamadı")
     return FileResponse(path, media_type="application/zip", filename=f"raven-client-inventory-{scan.id}.zip",
                         headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"})
+
+
+@router.get('/api/scans/{scan_id}/client-inventory/reconstruction', dependencies=[Depends(api_write_limit)])
+def client_reconstruction(scan_id: int, db: Session = Depends(get_db)):
+    scan = db.get(Scan, scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail='Tarama bulunamadi')
+    if not (scan.meta or {}).get('client_inventory', {}).get('archive_available'):
+        raise HTTPException(status_code=404, detail='İstemci arşivi bulunamadı')
+    path = os.path.join(settings.data_dir, 'scans', str(scan.id), 'client-inventory.zip')
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail='İstemci arşivi bulunamadı')
+    try:
+        content = build_reconstruction(path)
+    except (ValueError, KeyError, OSError, zipfile.BadZipFile):
+        raise HTTPException(status_code=422, detail='Görsel yeniden oluşturma için geçerli HTML bulunamadı')
+    return Response(content=content, media_type='application/zip', headers={
+        'Content-Disposition': f'attachment; filename="raven-offline-snapshot-{scan.id}.zip"',
+        'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store',
+    })

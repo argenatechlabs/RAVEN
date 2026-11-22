@@ -116,7 +116,7 @@ def test_scanner_data_with_nul_is_saved(db, demo_scan, settings_override):
     assert len(found) == 2
     assert found[0].title == "Güvenlik bulgusu"
     assert found[0].evidence == "metin son\nTürkçe"
-    assert found[0].raw == {"template_id": "template x", "tags": ["etiket x"], "description": "açıklama x"}
+    assert found[0].raw == {"template_id": "template x", "tags": ["etiket x"], "description": "açıklama x", "verification": "unverified"}
     assert found[1].evidence == "abc def\niçerik son"
     saved_host = db.query(Subdomain).filter_by(scan_id=demo_scan.id).one()
     assert saved_host.title == "başlık sonu"
@@ -166,3 +166,11 @@ def test_command_failure_includes_exit_code_when_stderr_empty():
 
     result = CmdResult(argv=["httpx"], returncode=2, stdout="", stderr="")
     assert result.error_detail() == "çıkış kodu 2; stderr boş"
+
+
+def test_local_report_does_not_claim_unverified_is_real():
+    from app.ai.reporter import _local_summary
+    summary = _local_summary({'target_domain': 'example.com', 'scan_type': 'fast'},
+                             [{'severity': 'medium', 'verification': 'unverified'}], [])
+    assert 'gerçek bulgu' not in summary
+    assert 'manuel doğrulama' in summary

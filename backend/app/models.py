@@ -130,6 +130,7 @@ class Finding(Base):
             "is_false_positive": self.is_false_positive,
             "owasp_category": self.owasp_category,
             "source": self.source,
+            "verification": (self.raw or {}).get("verification", "unverified"),
             "ai_provider": (self.raw or {}).get("ai_provider"),
             "ai_confidence": (self.raw or {}).get("confidence"),
         }

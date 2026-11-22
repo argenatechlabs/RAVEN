@@ -67,7 +67,7 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Test pipeline persistence on PostgreSQL
         working-directory: backend
-        run: python -m pytest tests/test_pipeline.py tests/test_client_inventory.py
+        run: python -m pytest tests/test_pipeline.py tests/test_client_inventory.py tests/test_reconstruction.py tests/test_review_and_probes.py
 
   frontend:
     runs-on: ubuntu-latest

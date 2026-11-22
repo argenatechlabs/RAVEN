@@ -12,7 +12,7 @@ from app.ai.provider import LocalProvider, Provider
 SYSTEM_PROMPT = (
     "Sen kıdemli bir penetration testi uzmanısın (OSCP/OSWE seviyesinde). "
     "Güvenlik taraması bulgularını analiz edersin, false positive'leri eleersin "
-    "ve düzeltme önerisi sunarsın. Yanıtın Türkçe olmalıdır. "
+    "ve düzeltme önerisi sunarsın. Doğrulanmamış kanıtı kesin açık olarak sunma. Yanıtın Türkçe olmalıdır. "
     "KESİNLİKLE geçerli JSON döndür, başka metin yazma."
 )
 
@@ -149,7 +149,7 @@ def local_analysis(finding: Dict[str, Any]) -> TriageResult:
         f"{title} bulgusu {severity} seviyesinde değerlendirildi. "
         + ("False positive olarak işaretlendi (düşük etki / generic eşleşme). "
            if fp else
-           "Hedef sistemde doğrulandı; sömürü için kullanılabilir bir yüzey tespit edildi. ")
+           "Tespit otomatik bir işarettir; gerçek etki ve sömürülebilirlik ayrıca doğrulanmalıdır. ")
         + "Otomatik yerel analiz ile üretildi."
     )
     if fp:
@@ -157,8 +157,8 @@ def local_analysis(finding: Dict[str, Any]) -> TriageResult:
         fix_code = _fix_code(title, tags)
     else:
         exploit = (
-            "Saldırgan, bulguya konu bileşeni/endpoint'i doğrudan istismar ederek "
-            "yetkisiz erişim veya veri sızdırma sağlayabilir."
+            "Doğrulanması halinde bulguya konu bileşen güvenlik etkisi oluşturabilir; "
+            "senaryo ve etki manuel inceleme gerektirir."
         )
         fix_code = _fix_code(title, tags)
     return TriageResult(
@@ -259,6 +259,7 @@ def triage_findings(
                 "url": f.get("url"),
                 "evidence": (f.get("evidence") or "")[:800],
                 "tags": f.get("tags") or [],
+                "verification": f.get("verification", "unverified"),
             }
             for idx, f in enumerate(batch)
         ]

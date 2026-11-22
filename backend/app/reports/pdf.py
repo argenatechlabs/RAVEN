@@ -333,8 +333,18 @@ def render_pdf(
         story.append(_p(
             f"Durum: {_s(inventory.get('status'))}; dosya: {len(inventory.get('files') or [])}; "
             f"form: {len(inventory.get('forms') or [])}; API yolu adayı: {len(inventory.get('api_paths') or [])}; "
-            f"source map: {len(inventory.get('source_maps') or [])}. "
+            f"source map: {len(inventory.get('source_maps') or [])}; "
+            f"manuel inceleme adayı: {len(inventory.get('manual_review') or [])}. "
             "Bunlar gözlemdir; doğrulanmış güvenlik açığı veya tam site kopyası değildir.", styles["body"]))
+        reviews = inventory.get("manual_review") or []
+        if reviews:
+            story.append(_p("Manuel İnceleme Adayları — Test Edilmedi", styles["h2"]))
+            for item in reviews[:15]:
+                story.append(_p(
+                    f"{_clip(item.get('category'), 40)} — {_clip(item.get('url'), 180)}: "
+                    f"{_clip(item.get('reason'), 250)}", styles["body"]))
+            if len(reviews) > 15:
+                story.append(_p("Diğer adaylar JSON raporunda bulunur.", styles["body"]))
     story.append(Spacer(1, 4 * mm))
 
     # --- Findings table ------------------------------------------------------
@@ -411,6 +421,7 @@ def render_pdf(
             block.append(_p("<b>False Positive</b> olarak isaretlendi.", styles["body"]))
         if f.get("url"):
             block.append(_p(f"URL: {_s(f.get('url'))}", styles["cell"]))
+        block.append(_p(f"Doğrulama durumu: {_s(f.get('verification') or 'unverified')} (manuel inceleme gerekebilir)", styles["cell"]))
         if f.get("ai_provider"):
             block.append(_p(f"Analiz motoru: {_s(f.get('ai_provider'))}; AI güveni: {_s(f.get('ai_confidence'))} (doğrulama değildir)", styles["cell"]))
         if f.get("ai_analysis"):

@@ -649,4 +649,24 @@ veya kişisel veri içerebilir; yalnızca yetkili kişilerle paylaşın ve güve
 şekilde saklayın. **Arşivi çalıştırmayın veya güvenilir bir origin'de
 barındırmayın.** Bu çalışan bir site klonu değildir: sunucu kodu, veritabanı,
 iş mantığı, giriş sonrası içerik ve keşfedilemeyen varlıklar dahil değildir.
-Mevcut dosyaları güzelleştirme/çalışan siteyi yeniden oluşturma bu sürümde yoktur.
+
+
+
+### Çevrimdışı görsel kopya ve manuel inceleme
+
+Sonuç ekranından veya `GET /api/scans/{id}/client-inventory/reconstruction`
+adresinden indirilen ikinci ZIP, mevcut HTML/CSS/görselleri mümkün olduğunca
+yerel bağlantılarla eşleyen **statik, kısmi bir görsel kopyadır**. JavaScript
+çalıştırılmaz, formlar ve kontroller devre dışıdır; sunucu işlevleri, API'ler,
+veritabanı ve giriş sonrası içerik yeniden oluşturulmaz. Toplanan en fazla on
+JS dosyasının (her biri en fazla 512 KiB) güzelleştirilmiş hali yalnızca
+`analysis/` altında bulunur; güzelleştirme kodu çözmek veya çalışır hale
+getirmek değildir. Dosyalar hassas veri içerebilir; izole ortamda inceleyin.
+
+CSRF, SSRF, dosya yükleme ve iş mantığı için form alanları ve URL
+parametrelerinden **manuel inceleme adayları** listelenir. Bunlar test
+edilmiş açıklar değildir: form gönderilmez, dosya yüklenmez, harici
+servise SSRF isteği başlatılmaz ve iş işlemi değiştirilmez. Bu kategorilerin
+aktif doğrulaması bu sürümde yoktur. Yerleşik SQL/XSS kontrolleri normal
+yanıtla karşılaştırır; hata veya yansıma bulunması sömürü doğrulaması değildir.
+Eski taramaların yeni envanter bilgileri için yeniden taranması gerekebilir.

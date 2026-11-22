@@ -8,6 +8,7 @@ from app.ai.provider import LocalProvider, Provider
 SUMMARY_SYSTEM = (
     "Sen bir siber güvenlik raporu yazarısın. Yönetim özeti yazarken "
     "teknik detayı sadece gerekirse verir, oyuncaklaştırılmış bir tablo çizersin. "
+    "Doğrulanmamış işaretleri kesin açık olarak sunma; manuel inceleme gerektiğini belirt. "
     "Yanıt Türkçe ve Markdown formatında olmalıdır."
 )
 
@@ -86,7 +87,8 @@ def _local_summary(scan: Dict[str, Any], findings: List[Dict[str, Any]],
         f"Toplam **{len(subdomains)}** alt alan adı keşfedildi, bunların **{alive}** tanesi "
         f"canlı olarak doğrulandı. Tarama sonucunda **{len(findings)}** bulgu üretildi; "
         f"bunların **{false_positives}** tanesi false positive olarak filtrelendi, "
-        f"**{len(real)}** tanesi gerçek bulgu olarak kaldı.",
+        f"**{len(real)}** tanesi inceleme için kaldı. Bu sayı bulguların "
+        "kesin doğrulandığı anlamına gelmez; etki manuel doğrulama gerektirir.",
         "",
         f"Kritik **{counts['critical']}**, yüksek **{counts['high']}**, "
         f"orta **{counts['medium']}**, düşük **{counts['low']}** seviye bulgu mevcut. "
@@ -160,7 +162,7 @@ def generate_executive_summary(
         ),
         findings="\n".join(
             f"- [{f.get('severity')}] {f.get('title')} — {f.get('url')} "
-            f"(CVSS {f.get('cvss')})"
+            f"(CVSS {f.get('cvss')}; doğrulama: {f.get('verification', 'unverified')})"
             for f in ordered[:30]
         ) or "- (bulgu yok)",
     )

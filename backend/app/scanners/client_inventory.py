@@ -24,6 +24,7 @@ MAX_FILE = 1024 * 1024
 MAX_SECONDS = 30
 _PATH = re.compile(r'''["'](/(?:api|graphql|v[0-9]+|rest)/?[^"'\s<>]{0,180})["']''', re.I)
 _MAP = re.compile(r'[#@]\s*sourceMappingURL=([^\s*]+)')
+_CSS_ASSET = re.compile(r'''url\(\s*['"]?([^'"\)]+)''', re.I)
 
 
 def _origin(url):
@@ -54,10 +55,12 @@ class _HTML(HTMLParser):
             if url:
                 self.assets.append(url)
         if tag == 'form':
-            self.current = {'action': a.get('action') or '', 'method': (a.get('method') or 'get').upper()[:20], 'fields': []}
+            self.current = {'action': a.get('action') or '', 'method': (a.get('method') or 'get').upper()[:20], 'fields': [], 'field_types': []}
             self.forms.append(self.current)
-        if tag in ('input', 'select', 'textarea') and self.current is not None and a.get('name'):
-            self.current['fields'].append(a['name'][:100])
+        if tag in ('input', 'select', 'textarea') and self.current is not None:
+            if a.get('name'):
+                self.current['fields'].append(a['name'][:100])
+            self.current['field_types'].append((a.get('type') or tag).lower()[:30])
 
     def handle_endtag(self, tag):
         if tag == 'form':
@@ -67,7 +70,7 @@ class _HTML(HTMLParser):
 def _archive_name(url, content_type):
     # Content-addressed names avoid path traversal, query collisions and ZIP slip.
     path = urlsplit(url).path.lower()
-    ext = next((e for e in ('.html', '.js', '.mjs', '.css', '.json', '.map', '.svg', '.png', '.jpg', '.jpeg', '.woff2', '.txt', '.xml') if path.endswith(e)), '')
+    ext = next((e for e in ('.html', '.js', '.mjs', '.css', '.json', '.map', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.woff', '.woff2', '.ttf', '.txt', '.xml') if path.endswith(e)), '')
     if not ext:
         ext = '.html' if 'html' in content_type else '.bin'
     return 'files/' + hashlib.sha256(url.encode()).hexdigest()[:24] + ext
@@ -169,10 +172,15 @@ def run(ctx, alive, endpoints):
                 except Exception:
                     continue
                 for form in parser.forms[:30]:
-                    result['forms'].append({'page': url, 'action': urljoin(url, form['action']), 'method': form['method'], 'fields': form['fields'][:30]})
+                    result['forms'].append({'page': url, 'action': urljoin(url, form['action']), 'method': form['method'], 'fields': form['fields'][:30], 'field_types': form['field_types'][:30]})
                 for asset in parser.assets[:100]:
                     absolute = _normal(urljoin(url, asset))
                     if _origin(absolute) in authorities:
+                        queue.append(absolute)
+            if path.endswith('.css') or 'text/css' in content_type:
+                for ref in _CSS_ASSET.findall(text)[:100]:
+                    absolute = _normal(urljoin(url, ref.strip()))
+                    if _origin(absolute) in authorities and not urlsplit(absolute).query:
                         queue.append(absolute)
             if path.endswith(('.js', '.mjs')) or 'javascript' in content_type:
                 api_paths.update(_PATH.findall(text)[:100])

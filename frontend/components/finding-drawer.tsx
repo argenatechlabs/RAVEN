@@ -79,7 +79,7 @@ export function FindingDrawer({
         )}
 
         <p className="mb-4 text-xs text-muted">
-          Analiz motoru: {finding.ai_provider || "bilinmiyor"} · AI güveni: {finding.ai_confidence != null ? `%${Math.round(finding.ai_confidence * 100)}` : "belirtilmedi"}. AI güveni, bulgunun doğrulandığı anlamına gelmez.
+          Doğrulama: {finding.verification === "unverified" || !finding.verification ? "manuel doğrulama gerekli" : finding.verification} · Analiz motoru: {finding.ai_provider || "bilinmiyor"} · AI güveni: {finding.ai_confidence != null ? `%${Math.round(finding.ai_confidence * 100)}` : "belirtilmedi"}. AI güveni, bulgunun doğrulandığı anlamına gelmez.
         </p>
         <div className="space-y-4">
           <Block title="AI Analizi" icon={<Bot className="h-4 w-4" />}>

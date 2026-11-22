@@ -33,6 +33,7 @@ export interface ClientInventory {
   api_paths: string[];
   parameters: string[];
   source_maps: { url: string; sources: string[]; embedded_sources: number }[];
+  manual_review?: { category: string; url: string; reason: string; status: string; tested: boolean }[];
 }
 
 export interface Finding {
@@ -50,6 +51,7 @@ export interface Finding {
   is_false_positive: boolean;
   owasp_category: string | null;
   source: string;
+  verification?: string;
   ai_provider?: string | null;
   ai_confidence?: number | null;
 }

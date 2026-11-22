@@ -18,7 +18,7 @@ from app.core.scan_lock import acquire_scan_slot
 from app.database import SessionLocal
 from app.logger import LogBus, ScanLogger, clean_text as _clean_text
 from app.models import Finding, Scan, ScanStatus, Severity, Subdomain
-from app.scanners import client_inventory, crawler, recon, secrets, tech, tls, vuln
+from app.scanners import client_inventory, crawler, manual_review, recon, secrets, tech, tls, vuln
 from app.scanners.context import ScanContext
 from app.scanners.types import SecretResult, SubdomainResult, VulnResult
 
@@ -162,7 +162,8 @@ class ScanPipeline:
                     source=_clean_text(engine),
                     raw={"template_id": _clean_text(v.template_id),
                          "tags": _clean_obj(v.tags),
-                         "description": _clean_text(v.description)},
+                         "description": _clean_text(v.description),
+                         "verification": _clean_text(v.raw.get("verification", "unverified"))},
                 )
             )
         for s in secrets:
@@ -252,6 +253,7 @@ class ScanPipeline:
                 # target code and do not let an inventory failure lose the scan.
                 try:
                     inventory = client_inventory.run(ctx, alive, endpoints)
+                    inventory["manual_review"] = manual_review.run(inventory, endpoints)
                     scan.meta = _clean_obj({**(scan.meta or {}), "client_inventory": inventory})
                     session.commit()
                     logger.info(f"İstemci envanteri: {len(inventory['files'])} dosya ({inventory['status']})")
@@ -333,6 +335,7 @@ class ScanPipeline:
                         "tags": (f.raw or {}).get("tags", []),
                         "cvss": f.cvss,
                         "type": f.type,
+                        "verification": (f.raw or {}).get("verification", "unverified"),
                     }
                     for f in findings
                 ]

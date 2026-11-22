@@ -22,8 +22,14 @@ def test_inventory_scopes_requests_and_collects_source_maps(tmp_path):
         def do_GET(self):
             hits.append(self.path)
             if self.path == '/':
-                content = b'''<html><script src="/app.js"></script><img src="http://localhost:1/evil.png"><form action="/submit" method="post"><input name="email"></form></html>'''
+                content = b'''<html><script src="/app.js"></script><link rel="stylesheet" href="/style.css"><img src="http://localhost:1/evil.png"><form action="/submit" method="post"><input name="email"></form></html>'''
                 ctype = 'text/html'
+            elif self.path == '/style.css':
+                content = b'body{background:url(/background.png)}'
+                ctype = 'text/css'
+            elif self.path == '/background.png':
+                content = b'png'
+                ctype = 'image/png'
             elif self.path == '/app.js':
                 content = b'''const u="/api/users";\n//# sourceMappingURL=app.js.map'''
                 ctype = 'application/javascript'
@@ -69,6 +75,7 @@ def test_inventory_scopes_requests_and_collects_source_maps(tmp_path):
         assert result['source_maps'][0]['sources'] == ['src/app.ts']
         assert result['source_maps'][0]['embedded_sources'] == 1
         assert '/submit' not in hits
+        assert '/background.png' in hits
         with zipfile.ZipFile(tmp_path / 'client-inventory.zip') as archive:
             manifest = json.loads(archive.read('manifest.json'))
             assert manifest['files']
@@ -94,7 +101,7 @@ def test_inventory_archive_api_and_pipeline(db, demo_scan, settings_override, mo
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            self.wfile.write(b'<html><form action="/save"><input name="name"></form></html>')
+            self.wfile.write(b'<html><form action="/save" method="post"><input name="name"></form></html>')
 
         def log_message(self, *_args):
             pass
@@ -117,10 +124,17 @@ def test_inventory_archive_api_and_pipeline(db, demo_scan, settings_override, mo
         scan = db.get(Scan, demo_scan.id)
         assert scan.status == ScanStatus.completed
         assert scan.meta['client_inventory']['forms'][0]['fields'] == ['name']
+        assert any(item['category'] == 'csrf' and not item['tested'] for item in scan.meta['client_inventory']['manual_review'])
         response = client.get(f'/api/scans/{scan.id}/client-inventory/archive')
         assert response.status_code == 200
         assert response.headers['content-type'] == 'application/zip'
         assert response.content.startswith(b'PK')
+        reconstructed = client.get(f'/api/scans/{scan.id}/client-inventory/reconstruction')
+        assert reconstructed.status_code == 200 and reconstructed.content.startswith(b'PK')
+        import io
+        with zipfile.ZipFile(io.BytesIO(reconstructed.content)) as z:
+            assert 'index.html' in z.namelist()
+            assert b'disabled' in z.read('index.html')
         assert client.get('/api/scans/999999/client-inventory/archive').status_code == 404
         pdf = client.get(f'/api/scans/{scan.id}/report?format=pdf')
         assert pdf.status_code == 200 and pdf.content.startswith(b'%PDF')

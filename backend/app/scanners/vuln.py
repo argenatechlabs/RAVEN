@@ -594,26 +594,33 @@ def _behaviour_checks(client, host: str, base: str, findings: List[VulnResult]) 
                  "open-redirect")
             break
 
-    # Reflected XSS probe.
+    # Differential checks: reflection and error disclosure are indicators, not
+    # proof of executable XSS or exploitable SQL injection.
     payload = "<script>ravenxssprobe()</script>"
     for path in ("/search?q=", "/index.php?q=", "/?s="):
-        resp = client.get(base + path + payload.replace(">", "%3E").replace("<", "%3C"))
-        if resp is not None and payload in (resp.text or ""):
-            _add(findings, host, base + path + "<script>", "high",
-                 "Reflected XSS (Probable)",
-                 "The search parameter reflects input without encoding.", 7.8,
-                 ["xss", "reflected"], f"Reflected payload: {payload}",
-                 "reflected-xss")
+        baseline = client.get(base + path + "ravenbaseline", follow_redirects=False)
+        resp = client.get(base + path + payload.replace(">", "%3E").replace("<", "%3C"), follow_redirects=False)
+        if (baseline is not None and resp is not None and
+                "html" in resp.headers.get("content-type", "").lower() and
+                payload not in (baseline.text or "") and payload in (resp.text or "")):
+            _add(findings, host, base + path + "<script>", "medium",
+                 "Reflected XSS (Manual Review)",
+                 "HTML reflects the marker; execution and context require manual verification.", 5.5,
+                 ["xss", "reflected"], f"Reflected payload: {payload}", "reflected-xss")
+            findings[-1].raw["verification"] = "unverified"
             break
 
-    # SQL error disclosure.
-    for path in ("/index.php?id=1'", "/product?id=1'", "/news?id=1'"):
-        resp = client.get(base + path)
-        if resp is not None and _SQL_ERROR_RE.search(resp.text or ""):
-            _add(findings, host, base + path, "high", "SQL Injection (Probable)",
-                 "A SQL error message is disclosed for a malformed parameter.", 8.1,
-                 ["sqli", "injection"], _SQL_ERROR_RE.search(resp.text).group(0)[:200],
-                 "sqli-probable")
+    for path in ("/index.php?id=1", "/product?id=1", "/news?id=1"):
+        baseline = client.get(base + path, follow_redirects=False)
+        resp = client.get(base + path + "%27", follow_redirects=False)
+        if baseline is None or resp is None or _SQL_ERROR_RE.search(baseline.text or ""):
+            continue
+        match = _SQL_ERROR_RE.search(resp.text or "")
+        if match:
+            _add(findings, host, base + path + "%27", "medium", "SQL Error (Manual Review)",
+                 "A SQL error appeared after a quote; injection is not confirmed.", 5.5,
+                 ["sqli", "injection"], match.group(0)[:200], "sqli-probable")
+            findings[-1].raw["verification"] = "unverified"
             break
 
 
@@ -717,6 +724,9 @@ def _candidate_param_urls(endpoints: Optional[List], base: str) -> List[Tuple[st
     seen: set = set()
     for ep in (endpoints or [])[:60]:
         url = ep.url if hasattr(ep, "url") else str(ep)
+        parts, scope = urlsplit(url), urlsplit(base)
+        if parts.scheme not in ("http", "https") or parts.netloc.lower() != scope.netloc.lower():
+            continue
         if "?" not in url:
             continue
         query = url.split("?", 1)[1]
@@ -764,17 +774,28 @@ def _parameter_checks(
     for url, name in candidates:
         if used >= budget or ctx.expired():
             return
+        # Compare with the original response so pre-existing errors/reflection
+        # are not misattributed to a payload. Do not follow redirects.
+        baseline = client.get(url, follow_redirects=False)
+        used += 1
+        if baseline is None:
+            continue
         for probe in _PARAM_PROBES:
-            if used >= budget:
+            if used >= budget or ctx.expired():
                 return
             target = _with_param(url, name, probe["payload"])
-            resp = client.get(target, follow_redirects=(probe["kind"] != "redirect"))
+            resp = client.get(target, follow_redirects=False)
             used += 1
             if resp is None:
                 continue
             if probe["kind"] == "redirect" and resp.status_code not in (301, 302, 303, 307, 308):
                 continue
             if not _param_signal(probe["kind"], resp, probe["payload"], base):
+                continue
+            if probe["kind"] == "sqli" and _SQL_ERROR_RE.search(baseline.text or ""):
+                continue
+            if probe["kind"] == "xss" and (probe["payload"] in (baseline.text or "") or
+                    "html" not in resp.headers.get("content-type", "").lower()):
                 continue
             template = f"param-{probe['kind']}-{name}"
             if probe["kind"] == "redirect":
@@ -790,12 +811,16 @@ def _parameter_checks(
             if any(f.template_id == template and f.url == target for f in findings):
                 continue
             _add(
-                findings, host, target, probe["severity"], probe["name"],
-                probe["description"], probe["cvss"], probe["tags"],
+                findings, host, target,
+                "medium" if probe["kind"] in ("xss", "sqli") else probe["severity"],
+                probe["name"] + (" (Manual Review)" if probe["kind"] in ("xss", "sqli") else ""),
+                probe["description"] + " Manual verification required.",
+                5.5 if probe["kind"] in ("xss", "sqli") else probe["cvss"], probe["tags"],
                 f"param={name}; status={resp.status_code}; "
                 f"signal={probe['payload'][:40]}",
                 template,
             )
+            findings[-1].raw["verification"] = "unverified"
             # One finding per parameter is enough.
             break
 
