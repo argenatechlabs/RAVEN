@@ -3,6 +3,7 @@ secret scan -> AI triage -> report data."""
 from __future__ import annotations
 
 import os
+import time
 import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -75,7 +76,6 @@ SECRET_SEVERITY = {
     "Firebase URL": "info",
     "Internal IPv4 Address": "low",
     "Internal Hostname": "info",
-    "Email Address": "info",
     "AWS S3 URL": "info",
     "Facebook Token": "high",
     "Mailchimp Key": "medium",
@@ -206,6 +206,15 @@ class ScanPipeline:
                 workdir=workdir,
                 settings=self.settings,
                 logger=logger,
+            )
+            budget = (
+                self.settings.scan_timeout_deep
+                if ctx.deep
+                else self.settings.scan_timeout_fast
+            )
+            ctx.deadline = time.monotonic() + budget
+            logger.info(
+                f"Tarama bütçesi: {budget} sn ({'deep' if ctx.deep else 'fast'})"
             )
 
             try:

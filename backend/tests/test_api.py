@@ -152,6 +152,34 @@ def test_settings_update_masks_secret(client):
     assert "•" in stored
 
 
+def test_settings_update_per_provider_keeps_key(client):
+    """The /settings page patches one provider without wiping its stored key."""
+    first = client.put(
+        "/api/settings",
+        json={"providers": {"xai": {"api_key": "gsk_keepme123", "model": "grok-3"}}},
+    ).json()
+    assert first["providers"]["xai"]["api_key_set"] is True
+
+    second = client.put(
+        "/api/settings",
+        json={"providers": {"xai": {"model": "grok-3-mini", "keep_api_key": True}}},
+    ).json()
+    assert second["providers"]["xai"]["model"] == "grok-3-mini"
+    assert second["providers"]["xai"]["api_key_set"] is True
+    assert second["providers"]["xai"]["api_key"] == first["providers"]["xai"]["api_key"]
+
+    # A provider that does not exist is rejected.
+    assert client.put(
+        "/api/settings", json={"providers": {"nope": {"model": "x"}}}
+    ).status_code == 400
+
+
+def test_settings_provider_local_is_accepted(client):
+    body = client.put("/api/settings", json={"provider": "local"}).json()
+    assert body["provider"] == "local"
+    client.put("/api/settings", json={"provider": "auto"})
+
+
 def test_provider_test_local(client):
     body = client.post("/api/providers/local/test").json()
     assert body["ok"] is True

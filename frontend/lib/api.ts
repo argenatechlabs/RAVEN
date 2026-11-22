@@ -100,6 +100,13 @@ export const api = {
     model?: string;
     base_url?: string;
     api_key?: string;
+    /** True when the client has no key field value and the stored one must stay. */
+    keep_api_key?: boolean;
+    /** Per-provider overrides, used by the /settings page. */
+    providers?: Record<
+      string,
+      { model?: string; base_url?: string; api_key?: string; keep_api_key?: boolean }
+    >;
   }) =>
     request<SettingsState>("/settings", {
       method: "PUT",

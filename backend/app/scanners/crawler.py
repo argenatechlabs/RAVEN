@@ -76,7 +76,7 @@ def _crawl_python(alive: List[SubdomainResult], ctx: ScanContext) -> List[Endpoi
         max_depth = 3 if ctx.deep else 2
         visited: set = set()
         # Bound the crawl so a busy target cannot run for the full timeout.
-        budget = min(ctx.settings.max_endpoints, 400)
+        budget = min(ctx.settings.max_endpoints, 800 if ctx.deep else 400)
         while queue and len(visited) < budget:
             url, depth = queue.pop(0)
             if url in seen or url in visited:
@@ -131,6 +131,8 @@ def run(
         ctx.logger.info(f"[DEMO] {len(endpoints)} endpoint, "
                         f"{sum(1 for e in endpoints if e.is_js)} JS dosyası")
         return endpoints, EngineReport(engine="demo", detail="sentetik veri")
+    if ctx.expired():
+        return [], EngineReport(engine="timeout", detail="tarama süresi doldu")
 
     hosts_file = os.path.join(ctx.workdir, "alive_hosts.txt")
     out_file = os.path.join(ctx.workdir, "endpoints.txt")
@@ -145,7 +147,7 @@ def run(
             "-silent", "-o", out_file,
         ]
         ctx.logger.info(f"katana taraması: {len(alive)} host")
-        result = run_cmd(cmd, timeout=ctx.settings.scanner_timeout, cwd=ctx.workdir)
+        result = run_cmd(cmd, timeout=ctx.command_timeout(), cwd=ctx.workdir)
         if result.returncode == 127:
             ctx.logger.warning("katana bulunamadı, yerel crawler'a geçiliyor")
         elif not result.ok:

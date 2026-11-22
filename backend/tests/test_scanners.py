@@ -57,7 +57,7 @@ def test_secret_patterns_detect_common_tokens():
         found.add(result.secret_type)
     for expected in (
         "AWS Access Key ID", "GitHub Token", "Slack Token", "Google API Key",
-        "JWT", "Private Key Block", "Connection String", "Email Address",
+        "JWT", "Private Key Block", "Connection String",
     ):
         assert expected in found, f"missing {expected}: {found}"
 
@@ -118,6 +118,10 @@ def test_tls_run_skips_http_only_hosts():
             @staticmethod
             def info(message):
                 pass
+
+        @staticmethod
+        def expired():
+            return False
 
     findings, report = tls.run(_Ctx(), [_Info()])
     assert findings == []

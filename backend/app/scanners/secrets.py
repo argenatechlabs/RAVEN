@@ -79,16 +79,42 @@ PATTERNS = [
      )),
     ("Basic Auth in URL", re.compile(r"https?://[^/\s:]+:[^/\s@]{3,}@[^\s\"']+")),
     ("Internal IPv4 Address",
-     re.compile(r"\b(?:10|127|192\.168|172\.(?:1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}\b")),
+     # 127.0.0.1 appears in virtually every bundle and is never actionable.
+     re.compile(r"\b(?:10|192\.168|172\.(?:1[6-9]|2[0-9]|3[01]))\."
+                r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\b")),
     ("Internal Hostname",
      re.compile(r"\b[a-z0-9-]+\.(?:internal|local|corp|lan|intra|private)\b")),
-    ("Email Address",
-     re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")),
     ("AWS S3 URL",
      re.compile(r"\bhttps?://[A-Za-z0-9._\-]*\.?s3[.-][A-Za-z0-9._\-]*\.amazonaws\.com[^\s\"']*")),
     ("Google Service Account",
      re.compile(r"\"(?:private_key_id|client_email|project_id)\"\s*:\s*\"[^\"]{10,}\"")),
 ]
+
+
+# Minified bundles are full of property accesses that look like hostnames
+# (``this.local``, ``link.internal``); these identifiers are never real hosts.
+_JS_IDENTIFIERS = {
+    "this", "self", "that", "super", "new", "proto", "prototype", "constructor",
+    "options", "option", "link", "item", "obj", "object", "math", "json",
+    "array", "string", "number", "boolean", "console", "window", "document",
+    "module", "exports", "require", "local", "global", "data", "props", "node",
+}
+
+
+def _is_false_positive(name: str, line: str, match: "re.Match[str]") -> bool:
+    start, end = match.start(), match.end()
+    if name == "Internal IPv4 Address":
+        # A version string such as "10.0.8" is not an address; require 4 octets
+        # and reject obvious version declarations.
+        if match.group(0).count(".") != 3:
+            return True
+        prefix = line[max(0, start - 14):start].lower()
+        return any(token in prefix for token in ("version", "release", "v =", "v="))
+    if name == "Internal Hostname":
+        if line[:start].endswith((".", "$")) or line[end:end + 1] == "(":
+            return True
+        return match.group(0).split(".")[0].lower() in _JS_IDENTIFIERS
+    return False
 
 
 def _mask(secret: str) -> str:
@@ -123,6 +149,8 @@ def _scan_text(url: str, text: str, findings: List[SecretResult], seen: set) -> 
     for line_no, line in enumerate(text.splitlines(), start=1):
         for name, pattern in PATTERNS:
             for match in pattern.finditer(line):
+                if _is_false_positive(name, line, match):
+                    continue
                 raw = match.group(0)
                 key = (name, raw)
                 if key in seen:
@@ -149,6 +177,8 @@ def run(
         secrets = _demo_secrets(endpoints)
         ctx.logger.info(f"[DEMO] secret scan: {len(secrets)} sır fitil")
         return secrets, EngineReport(engine="demo", detail="sentetik veri")
+    if ctx.expired():
+        return [], EngineReport(engine="timeout", detail="tarama süresi doldu")
 
     candidates = [e for e in endpoints if e.is_js]
     candidates += [e for e in endpoints if e.url.split("?")[0].endswith(

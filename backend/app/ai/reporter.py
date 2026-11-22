@@ -75,6 +75,7 @@ def _local_summary(scan: Dict[str, Any], findings: List[Dict[str, Any]],
                    subdomains: List[Dict[str, Any]]) -> str:
     counts = _severity_counts(findings)
     real = [f for f in findings if not f.get("is_false_positive")]
+    false_positives = len(findings) - len(real)
     critical_high = [f for f in real if f.get("severity") in ("critical", "high")]
     alive = sum(1 for s in subdomains if s.get("is_alive"))
 
@@ -84,7 +85,8 @@ def _local_summary(scan: Dict[str, Any], findings: List[Dict[str, Any]],
         f"`{scan.get('target_domain')}` hedefi için otomatik sızma testi tamamlandı. "
         f"Toplam **{len(subdomains)}** alt alan adı keşfedildi, bunların **{alive}** tanesi "
         f"canlı olarak doğrulandı. Tarama sonucunda **{len(findings)}** bulgu üretildi; "
-        f"bunların **{len(real)}** tanesi false positive olarak filtrelendi.",
+        f"bunların **{false_positives}** tanesi false positive olarak filtrelendi, "
+        f"**{len(real)}** tanesi gerçek bulgu olarak kaldı.",
         "",
         f"Kritik **{counts['critical']}**, yüksek **{counts['high']}**, "
         f"orta **{counts['medium']}**, düşük **{counts['low']}** seviye bulgu mevcut. "

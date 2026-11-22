@@ -101,19 +101,22 @@ def run(ctx: ScanContext) -> Tuple[List[str], EngineReport]:
     """Return a deduplicated list of discovered subdomains."""
     out_file = os.path.join(ctx.workdir, "subdomains.txt")
     binary = resolve_binary("subfinder", ctx.settings)
+    subs: List[str] = []
 
     if ctx.settings.demo_mode:
         subs = _demo_subdomains(ctx.domain)
         write_lines(out_file, subs)
         ctx.logger.info(f"[DEMO] {len(subs)} subdomain bulundu")
         return subs, EngineReport(engine="demo", detail="sentetik veri")
+    if ctx.expired():
+        return subs, EngineReport(engine="timeout", detail="tarama süresi doldu")
 
     if binary:
         cmd = [binary, "-d", ctx.domain, "-silent", "-all", "-o", out_file]
         if not ctx.deep:
             cmd.remove("-all")
         ctx.logger.info(f"subfinder çalıştırılıyor: {ctx.domain}")
-        result = run_cmd(cmd, timeout=ctx.settings.scanner_timeout, cwd=ctx.workdir)
+        result = run_cmd(cmd, timeout=ctx.command_timeout(), cwd=ctx.workdir)
         if result.returncode == 127:
             ctx.logger.warning("subfinder bulunamadı, yerel keşfe geçiliyor")
         elif not result.ok:

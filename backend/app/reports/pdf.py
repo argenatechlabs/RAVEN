@@ -46,14 +46,48 @@ _TR_MAP = str.maketrans({
 
 
 def _s(text: Any) -> str:
-    """Make arbitrary text safe for the PDF base fonts."""
+    """Keep Turkish glyphs when a TrueType font is available.
+
+    The base-14 fonts have no Turkish coverage, so in that fallback the text is
+    transliterated; with DejaVu registered (the Docker image installs it) the
+    original characters are kept.
+    """
+    if _TTF_OK:
+        return str(text if text is not None else "")
     return str(text if text is not None else "").translate(_TR_MAP)
+
+
+def _clip(text: Any, limit: int = 160) -> str:
+    """Trim evidence at a word boundary so the report does not end mid-token."""
+    value = " ".join(str(text or "").split())
+    if len(value) <= limit:
+        return value
+    return value[:limit].rsplit(" ", 1)[0] + " …"
+
+
+def _clip_block(text: Any, limit: int = 4000) -> str:
+    """Trim a preformatted block on a line boundary instead of mid-tag."""
+    value = str(text or "")
+    if len(value) <= limit:
+        return value
+    return value[:limit].rsplit("\n", 1)[0] + "\n…"
 
 
 _FONT_REGISTERED = False
 _TTF_OK = False
 FONT = "Helvetica"
 FONT_BOLD = "Helvetica-Bold"
+
+
+def _mono_font() -> str:
+    """Prefer the monospace face that actually carries Turkish glyphs."""
+    if _TTF_OK:
+        from reportlab.pdfbase import pdfmetrics
+
+        for name in ("RavenMono", "DejaVuSansMono", "Courier"):
+            if name in pdfmetrics.getRegisteredFontNames():
+                return name
+    return "Courier"
 
 
 def _register_fonts() -> bool:
@@ -67,7 +101,6 @@ def _register_fonts() -> bool:
     _FONT_REGISTERED = True
     candidates = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/TTF/DejaVuSans.ttf",
         "/usr/share/fonts/dejavu/DejaVuSans.ttf",
     ]
@@ -78,9 +111,12 @@ def _register_fonts() -> bool:
     bold = normal.replace("DejaVuSans.ttf", "DejaVuSans-Bold.ttf") if normal else None
     if not normal or not os.path.exists(bold):
         return False
+    mono = normal.replace("DejaVuSans.ttf", "DejaVuSansMono.ttf")
     try:
         pdfmetrics.registerFont(TTFont("RavenSans", normal))
         pdfmetrics.registerFont(TTFont("RavenSans-Bold", bold))
+        if os.path.exists(mono):
+            pdfmetrics.registerFont(TTFont("RavenMono", mono))
     except Exception:  # pragma: no cover - platform dependent
         return False
     global FONT, FONT_BOLD
@@ -110,7 +146,7 @@ def _header_footer(canvas, doc) -> None:
     canvas.line(18 * mm, height - 14 * mm, width - 18 * mm, height - 14 * mm)
     canvas.setFillColor(GREY)
     canvas.setFont("RavenSans" if _TTF_OK else "Helvetica", 7)
-    canvas.drawString(18 * mm, 10 * mm, "Gizli - Yetkili personele ozel")
+    canvas.drawString(18 * mm, 10 * mm, "Gizli — Yetkili personele özel")
     canvas.drawRightString(width - 18 * mm, 10 * mm, f"Sayfa {doc.page}")
     canvas.restoreState()
 
@@ -142,7 +178,7 @@ def _styles() -> dict:
             fontSize=8.5, textColor=LIGHT, leading=11,
         ),
         "mono": ParagraphStyle(
-            "rav-mono", parent=base["Normal"], fontName="Courier",
+            "rav-mono", parent=base["Normal"], fontName=_mono_font(),
             fontSize=8, textColor=colors.HexColor("#d1fae5"), leading=10.5,
             wordWrap="CJK", splitLongWords=1,
         ),
@@ -194,15 +230,23 @@ def render_pdf(
     # --- Cover ---------------------------------------------------------------
     story.append(Spacer(1, 10 * mm))
     story.append(_p("RAVEN", styles["title"]))
-    story.append(_p("Autonomous AI Pentester - Sızma Testi Raporu", styles["subtitle"]))
+    story.append(_p("Autonomous AI Pentester — Sızma Testi Raporu", styles["subtitle"]))
     story.append(Spacer(1, 6 * mm))
     meta_rows = [
         ["Hedef", _s(scan.get("target_domain"))],
         ["Tarama Tipi", _s(scan.get("scan_type"))],
         ["Durum", _s(scan.get("status"))],
         ["Risk Skoru", f"{scan.get('risk_score', 0)} / 100"],
-        ["Baslangic", _s(scan.get("created_at"))],
-        ["Bitis", _s(scan.get("completed_at") or "-")],
+    ]
+    ai_meta = (scan.get("meta") or {}).get("ai") or {}
+    if ai_meta.get("provider"):
+        meta_rows.append([
+            "AI Motoru",
+            f"{_s(ai_meta.get('provider'))} · {_s(ai_meta.get('model') or '-')}",
+        ])
+    meta_rows += [
+        ["Başlangıç", _s(scan.get("created_at"))],
+        ["Bitiş", _s(scan.get("completed_at") or "-")],
     ]
     meta = Table(meta_rows, colWidths=[35 * mm, 120 * mm])
     meta.setStyle(TableStyle([
@@ -225,7 +269,7 @@ def render_pdf(
     for f in findings:
         sev = str(f.get("severity") or "info").lower()
         counts[sev] = counts.get(sev, 0) + 1
-    sev_rows = [["Kritik", "Yuksek", "Orta", "Dusuk", "Bilgi", "Toplam"]]
+    sev_rows = [["Kritik", "Yüksek", "Orta", "Düşük", "Bilgi", "Toplam"]]
     sev_rows.append([
         str(counts["critical"]), str(counts["high"]), str(counts["medium"]),
         str(counts["low"]), str(counts["info"]), str(len(findings)),
@@ -250,7 +294,7 @@ def render_pdf(
 
     counts_meta = (scan.get("meta") or {}).get("counts") or {}
     scope_rows = [
-        ["Alt Alan", "Canli", "Endpoint", "Zafiyet", "Sır Fitili"],
+        ["Alt Alan", "Canlı", "Endpoint", "Zafiyet", "Sır Fitili"],
         [
             str(counts_meta.get("subdomains", len(subdomains))),
             str(counts_meta.get("alive", "-")),
@@ -281,7 +325,7 @@ def render_pdf(
     story.append(PageBreak())
 
     # --- Executive summary ---------------------------------------------------
-    story.append(_p("Yonetici Ozeti", styles["h2"]))
+    story.append(_p("Yönetici Özeti", styles["h2"]))
     story.extend(_md_to_flowables(executive_summary, styles))
     story.append(Spacer(1, 4 * mm))
 
@@ -345,7 +389,7 @@ def render_pdf(
     story.append(PageBreak())
 
     # --- Detailed findings ---------------------------------------------------
-    story.append(_p("Bulgu Detaylari ve AI Analizi", styles["h2"]))
+    story.append(_p("Bulgu Detayları ve AI Analizi", styles["h2"]))
     if not findings:
         story.append(_p("Detaylı bulgu yok.", styles["body"]))
     for idx, f in enumerate(findings, start=1):
@@ -362,26 +406,26 @@ def render_pdf(
         if f.get("ai_analysis"):
             block.append(_p(f"<b>AI Analizi:</b> {_s(f.get('ai_analysis'))}", styles["body"]))
         if f.get("exploit_scenario"):
-            block.append(_p(f"<b>Somuru Senaryosu:</b> {_s(f.get('exploit_scenario'))}", styles["body"]))
+            block.append(_p(f"<b>Sömürü Senaryosu:</b> {_s(f.get('exploit_scenario'))}", styles["body"]))
         if f.get("evidence"):
             block.append(_p("<b>Kanit:</b>", styles["body"]))
-            block.append(Preformatted(_s(f.get("evidence"))[:4000], styles["mono"]))
+            block.append(Preformatted(_s(_clip_block(f.get("evidence"), 4000)), styles["mono"]))
         if f.get("fix_code"):
-            block.append(_p("<b>Duzeltme:</b>", styles["body"]))
-            block.append(Preformatted(_s(f.get("fix_code"))[:4000], styles["mono"]))
+            block.append(_p("<b>Düzeltme:</b>", styles["body"]))
+            block.append(Preformatted(_s(_clip_block(f.get("fix_code"), 4000)), styles["mono"]))
         block.append(Spacer(1, 4 * mm))
         story.append(KeepTogether(block))
 
     # --- Subdomains ----------------------------------------------------------
     story.append(PageBreak())
-    story.append(_p("Alt Alan Adlari", styles["h2"]))
+    story.append(_p("Alt Alan Adları", styles["h2"]))
     rows = [[_p("Host", styles["cell"]), _p("IP", styles["cell"]),
              _p("Canli", styles["cell"]), _p("Teknolojiler", styles["cell"])]]
     for s in subdomains[:300]:
         rows.append([
             _p(str(s.get("subdomain")), styles["cell"]),
             _p(str(s.get("ip") or "-"), styles["cell"]),
-            _p("Evet" if s.get("is_alive") else "Hayir", styles["cell"]),
+            _p("Evet" if s.get("is_alive") else "Hayır", styles["cell"]),
             _p(", ".join(s.get("technologies") or []) or "-", styles["cell"]),
         ])
     sub_table = Table(rows, colWidths=[62 * mm, 30 * mm, 16 * mm, 64 * mm], repeatRows=1)
@@ -395,10 +439,10 @@ def render_pdf(
     story.append(sub_table)
     story.append(Spacer(1, 6 * mm))
     story.append(_p(
-        "Bu rapor RAVEN tarafindan otomatik üretmistir. Tarama yalnizca hedef "
-        "sahibinin yazili izniyle yapilmalidir. Bulgularin dogrulugu yapay zekâ "
-        "modellerine ve imza setine baglidir; kritik kararlar insan uzman "
-        "tarafindan yeniden degerlendirilmelidir.",
+        "Bu rapor RAVEN tarafından otomatik üretilmiştir. Tarama yalnızca hedef "
+        "sahibinin yazılı izniyle yapılmalıdır. Bulguların doğruluğu yapay zekâ "
+        "modellerine ve imza setine bağlıdır; kritik kararlar insan uzman "
+        "tarafından yeniden değerlendirilmelidir.",
         styles["cell"],
     ))
 

@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     # them in /usr/local/bin). PATH is searched as a fallback.
     scanner_bin_dir: str = "/usr/local/bin"
     scanner_timeout: int = 1200
+    # Overall wall-clock budget for one scan (the product promises ~5 minutes).
+    scan_timeout_fast: int = 300
+    scan_timeout_deep: int = 600
+    nuclei_timeout: int = 300
     request_rate_limit: int = 10  # max requests / second against a target
     max_subdomains: int = 500
     max_endpoints: int = 5000

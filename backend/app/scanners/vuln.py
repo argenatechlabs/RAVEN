@@ -5,11 +5,13 @@ handful of high-signal checks so the pipeline remains demonstrable offline.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import secrets
 from typing import List, Optional, Tuple
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from app.scanners.common import (
     EngineReport,
@@ -374,13 +376,101 @@ _SENSITIVE_PATHS = [
     ("/dev/", "low", "Development Directory Exposed",
      "A development directory is reachable.", 3.7,
      ["exposure", "dev"], re.compile(r"Index of", re.I), True),
-    ("/admin/", "info", "Admin Path Reachable",
-     "An administration path responds.", 2.1,
-     ["exposure", "admin"], None, False),
-    ("/api/", "info", "API Path Reachable",
-     "An API path responds.", 2.1,
-     ["exposure", "api"], None, False),
 ]
+
+# Paths without a body matcher still need a positive signal: single-page apps
+# answer every unknown route with HTTP 200 + the index document, which would
+# otherwise turn each entry below into a false positive.
+_PATH_KEYWORDS = {
+    "/.svn/entries": ("svn", "dir-version"),
+    "/error.log": ("exception", "traceback", "fatal", "stack trace", "severity"),
+    "/debug.log": ("exception", "traceback", "debug", "verbose"),
+    "/manager/html": ("tomcat", "manager"),
+    "/host-manager/html": ("tomcat", "host manager", "manager"),
+    "/jmx-console/": ("jmx", "jolokia", "mbean"),
+    "/.idea/workspace.xml": ("<project", "workspace"),
+    "/swagger-ui.html": ("swagger",),
+    "/swagger-ui/index.html": ("swagger",),
+    "/openapi.json": ("openapi", "swagger"),
+    "/actuator/env": ("propertysources", "actuator"),
+    "/actuator/trace": ("trace", "actuator"),
+    "/metrics": ("prometheus", "# help", "metrics"),
+    "/graphiql": ("graphiql",),
+    "/solr/": ("solr",),
+    "/kibana": ("kibana",),
+    "/grafana": ("grafana",),
+    "/jenkins": ("jenkins",),
+    "/jira": ("jira",),
+    "/gitlab": ("gitlab",),
+    "/phpmyadmin": ("phpmyadmin",),
+    "/pma": ("phpmyadmin",),
+    "/adminer.php": ("adminer",),
+    "/mysql": ("mysql",),
+    "/wp-admin/": ("wordpress", "wp-admin"),
+    "/wp-login.php": ("wordpress", "wp-login"),
+    "/jboss/": ("jboss",),
+    "/web-console/": ("weblogic", "console"),
+    "/console": ("console",),
+    "/cgi-bin/": ("cgi",),
+    "/robots.txt": ("user-agent", "disallow"),
+    "/sitemap.xml": ("urlset", "sitemap"),
+    "/.well-known/security.txt": ("contact:", "expires:"),
+}
+
+# Entries whose real payload is a binary blob; an HTML body means "not found".
+_BINARY_PATHS = ("/backup.zip", "/backup.tar.gz", "/.DS_Store", "/actuator/heapdump")
+
+
+def _signature(resp) -> str:
+    """Body signature used to recognise catch-all / soft-404 responses."""
+    body = resp.content or b""
+    return f"{resp.status_code}:{len(body)}:{hashlib.md5(body[:4096]).hexdigest()[:12]}"
+
+
+def _catchall_baseline(client, base: str) -> Optional[str]:
+    """Return the signature the app uses for unknown routes, when detectable.
+
+    Two random canaries are fetched; if both return the identical body the app
+    is almost certainly serving a catch-all (SPA fallback, soft 404), and that
+    signature can be used to discard look-alike responses.
+    """
+    signatures = []
+    for _ in range(2):
+        resp = client.get(f"{base}/raven-{secrets.token_hex(5)}/")
+        if resp is None:
+            return None
+        signatures.append(_signature(resp))
+    if len(set(signatures)) != 1:
+        return None
+    return signatures[0]
+
+
+def _looks_like_html(resp) -> bool:
+    ctype = (resp.headers.get("content-type") or "").lower()
+    if "html" in ctype:
+        return True
+    return bool(re.search(r"<!doctype html|<html[\s>]", resp.text or "", re.IGNORECASE))
+
+
+def _path_is_real(path: str, resp, body: str) -> bool:
+    """Reject soft-404 / catch-all look-alikes for one sensitive path."""
+    lowered = body.lower()
+    if path in _BINARY_PATHS:
+        if _looks_like_html(resp):
+            return False
+        content_type = (resp.headers.get("content-type") or "").lower()
+        head = (resp.content or b"")[:4]
+        if path == "/backup.zip":
+            return head[:2] == b"PK" or "zip" in content_type or "octet-stream" in content_type
+        if path == "/backup.tar.gz":
+            return head[:2] == b"\x1f\x8b" or "gzip" in content_type or "tar" in content_type
+        # .DS_Store / heapdump: require a non-text payload.
+        return "text/html" not in content_type and len(resp.content or b"") > 0
+    keywords = _PATH_KEYWORDS.get(path)
+    if keywords is None:
+        return True
+    return any(keyword in lowered for keyword in keywords)
+
 
 _SECURITY_HEADERS = [
     ("content-security-policy", "Content-Security-Policy"),
@@ -448,7 +538,10 @@ def _check_landing(resp, host: str, base: str, findings: List[VulnResult]) -> No
     # Cookie flags.
     set_cookie = resp.headers.get_list("set-cookie") if hasattr(resp.headers, "get_list") else []
     for cookie in set_cookie:
-        if cookie and ("httpOnly" not in cookie or "Secure" not in cookie):
+        # Compare case-insensitively: the header attribute is "HttpOnly", so a
+        # case-sensitive check flagged every cookie (including correct ones).
+        flags = cookie.lower()
+        if cookie and ("httponly" not in flags or "secure" not in flags):
             _add(findings, host, base + "/", "low", "Cookie Without HttpOnly/Secure",
                  "A session cookie is set without HttpOnly/Secure flags.", 3.7,
                  ["cookies", "misconfiguration"], cookie[:200], "cookie-flags")
@@ -484,15 +577,17 @@ def _behaviour_checks(client, host: str, base: str, findings: List[VulnResult]) 
              "The TRACE method is allowed (XST / information disclosure).", 5.3,
              ["methods", "xst"], f"HTTP {trace.status_code}", "trace-enabled")
 
-    # Open redirect.
-    for path in ("/login?redirect=https://evil.example/",
-                 "/redirect?url=https://evil.example/",
-                 "/logout?redirect=//evil.example/"):
+    # Open redirect (only when the redirect really leaves the target host).
+    for path, payload in (
+        ("/login?redirect=https://evil.example/", "https://evil.example/"),
+        ("/redirect?url=https://evil.example/", "https://evil.example/"),
+        ("/logout?redirect=//evil.example/", "//evil.example/"),
+    ):
         resp = client.get(base + path, follow_redirects=False)
-        if resp is None:
+        if resp is None or resp.status_code not in (301, 302, 303, 307, 308):
             continue
         location = resp.headers.get("location", "")
-        if "evil.example" in location:
+        if payload in location and _redirect_is_external(location, base):
             _add(findings, host, base + path, "medium", "Open Redirect",
                  "A redirect parameter is reflected in Location.", 6.1,
                  ["open-redirect", "validation"], f"Location: {location}",
@@ -583,7 +678,24 @@ _PARAM_PROBES = (
 )
 
 
-def _param_signal(kind: str, resp, payload: str) -> bool:
+def _redirect_is_external(location: str, base: str) -> bool:
+    """Only count redirects that actually leave the target host.
+
+    Host-normalising proxies (``http -> https``, ``example.com -> www.``) keep
+    ``$request_uri`` in the Location header, so the raw payload shows up there
+    for *every* parameter — that is not an open redirect.
+    """
+    if not location:
+        return False
+    resolved = urljoin(base + "/", location)
+    target_host = urlsplit(base).netloc.lower()
+    location_host = urlsplit(resolved).netloc.lower()
+    if not location_host:
+        return False
+    return location_host != target_host and not location_host.endswith("." + target_host)
+
+
+def _param_signal(kind: str, resp, payload: str, base: str = "") -> bool:
     body = (resp.text or "").lower()
     if kind == "xss":
         return payload in (resp.text or "")
@@ -594,7 +706,8 @@ def _param_signal(kind: str, resp, payload: str) -> bool:
     if kind == "cmdi":
         return "uid=" in body
     if kind == "redirect":
-        return "evil.example" in resp.headers.get("location", "").lower()
+        location = resp.headers.get("location", "")
+        return payload in location and _redirect_is_external(location, base)
     return False
 
 
@@ -659,9 +772,21 @@ def _parameter_checks(
             used += 1
             if resp is None:
                 continue
-            if not _param_signal(probe["kind"], resp, probe["payload"]):
+            if probe["kind"] == "redirect" and resp.status_code not in (301, 302, 303, 307, 308):
+                continue
+            if not _param_signal(probe["kind"], resp, probe["payload"], base):
                 continue
             template = f"param-{probe['kind']}-{name}"
+            if probe["kind"] == "redirect":
+                # One host usually reflects every parameter the same way; two
+                # findings are enough to describe the problem.
+                already = sum(
+                    1 for f in findings
+                    if f.template_id.startswith("param-redirect")
+                    and f.url.startswith(base)
+                )
+                if already >= 2:
+                    continue
             if any(f.template_id == template and f.url == target for f in findings):
                 continue
             _add(
@@ -696,6 +821,7 @@ def _builtin_scan(
                 base = f"http://{host.subdomain}"
                 landing = client.get(base + "/")
 
+            baseline = _catchall_baseline(client, base)
             for path, severity, name, desc, cvss, tags, matcher, require_200 in _SENSITIVE_PATHS:
                 if len(findings) >= max_findings:
                     break
@@ -707,9 +833,15 @@ def _builtin_scan(
                 if not require_200 and resp.status_code not in (200, 401, 403):
                     continue
                 body = resp.text or ""
+                # Catch-all / soft-404: the app served the very same document for
+                # an unknown random route, so this path is not really exposed.
+                if resp.status_code == 200 and baseline and _signature(resp) == baseline:
+                    continue
                 if matcher and not matcher.search(body):
                     continue
-                if not matcher and not require_200 and resp.status_code in (401, 403):
+                if not matcher and not _path_is_real(path, resp, body):
+                    continue
+                if resp.status_code in (401, 403):
                     evidence = f"HTTP {resp.status_code} (panel reachable)"
                 else:
                     evidence = body[:400]
@@ -765,7 +897,7 @@ def _ensure_nuclei_templates(ctx: ScanContext, binary: str) -> Optional[str]:
         return configured
     ctx.logger.info("nuclei şablonları indiriliyor (deep mod)")
     result = run_cmd(
-        [binary, "-update-templates", "-silent"], timeout=600, cwd=ctx.workdir
+        [binary, "-update-templates", "-silent"], timeout=min(300, ctx.command_timeout()), cwd=ctx.workdir
     )
     if result.ok and os.path.isdir(default_dir):
         return default_dir
@@ -786,6 +918,8 @@ def run(
         findings = _demo_findings(alive) + extra
         ctx.logger.info(f"[DEMO] nuclei: {len(findings)} bulgu")
         return findings, EngineReport(engine="demo", detail="sentetik veri")
+    if ctx.expired():
+        return extra, EngineReport(engine="timeout", detail="tarama süresi doldu")
 
     hosts_file = os.path.join(ctx.workdir, "alive_hosts.txt")
     out_file = os.path.join(ctx.workdir, "nuclei.jsonl")
@@ -809,7 +943,7 @@ def run(
             cmd += ["-t", template_dir]
         ctx.logger.info(f"nuclei taraması: {len(alive)} host, "
                         f"seviyeler={','.join(severities)}")
-        result = run_cmd(cmd, timeout=ctx.settings.scanner_timeout, cwd=ctx.workdir)
+        result = run_cmd(cmd, timeout=ctx.command_timeout(ctx.settings.nuclei_timeout), cwd=ctx.workdir)
         if result.returncode == 127:
             ctx.logger.warning("nuclei bulunamadı, yerel taramaya geçiliyor")
         elif not result.ok:

@@ -164,6 +164,8 @@ def run(ctx: ScanContext, subdomains: List[str]) -> Tuple[List[SubdomainResult],
         alive = _demo_alive(subdomains)
         ctx.logger.info(f"[DEMO] {len(alive)} canlı host")
         return alive, EngineReport(engine="demo", detail="sentetik veri")
+    if ctx.expired():
+        return [], EngineReport(engine="timeout", detail="tarama süresi doldu")
 
     out_file = os.path.join(ctx.workdir, "alive.jsonl")
     list_file = os.path.join(ctx.workdir, "subdomains.txt")
@@ -180,7 +182,7 @@ def run(ctx: ScanContext, subdomains: List[str]) -> Tuple[List[SubdomainResult],
             "-o", out_file,
         ]
         ctx.logger.info(f"httpx canlı kontrolü: {len(subdomains)} host")
-        result = run_cmd(cmd, timeout=ctx.settings.scanner_timeout, cwd=ctx.workdir)
+        result = run_cmd(cmd, timeout=ctx.command_timeout(), cwd=ctx.workdir)
         if result.returncode == 127:
             ctx.logger.warning("httpx bulunamadı, yerel proba geçiliyor")
         elif not result.ok:

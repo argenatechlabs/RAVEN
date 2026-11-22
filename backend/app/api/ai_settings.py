@@ -28,6 +28,20 @@ from app.database import get_db
 router = APIRouter()
 
 
+class ProviderPatch(BaseModel):
+    """Optional per-provider override.
+
+    ``None`` (key absent) leaves the value untouched; an empty string clears it.
+    A secret is never *read* back — the frontend always sends an empty key when
+    the user wants to keep the stored one.
+    """
+
+    model: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    keep_api_key: Optional[bool] = False
+
+
 class SettingsUpdate(BaseModel):
     provider: Optional[str] = Field(
         None, description="openai | anthropic | gemini | xai | openrouter | "
@@ -36,6 +50,12 @@ class SettingsUpdate(BaseModel):
     model: Optional[str] = Field(None, description="örn. grok-3, gemini-2.5-flash")
     base_url: Optional[str] = Field(None, description="OpenAI uyumlu özel uç nokta")
     api_key: Optional[str] = Field(None, description="Boş gönderilirse anahtar temizlenir")
+    keep_api_key: Optional[bool] = Field(
+        False, description="Doğruysa, istekte anahtar yoksa kayıtlı anahtar korunur"
+    )
+    providers: Optional[Dict[str, ProviderPatch]] = Field(
+        None, description="Sağlayıcı başına model/base_url/api_key geçersiz kılması"
+    )
 
 
 @router.get("/api/providers")
@@ -84,7 +104,7 @@ def get_settings(db: Session = Depends(get_db)) -> Dict[str, Any]:
 def update_settings(payload: SettingsUpdate, db: Session = Depends(get_db)) -> Dict[str, Any]:
     if payload.provider is not None:
         provider = payload.provider.strip().lower()
-        if provider not in PROVIDERS and provider != "auto":
+        if provider not in PROVIDERS and provider not in ("auto", "local"):
             raise HTTPException(status_code=400, detail="Bilinmeyen AI saglayicisi")
         set_stored(db, "ai.provider", provider)
         target = provider
@@ -100,6 +120,22 @@ def update_settings(payload: SettingsUpdate, db: Session = Depends(get_db)) -> D
             set_stored(
                 db, f"ai.providers.{target}.api_key",
                 payload.api_key.strip() or None, is_secret=True,
+            )
+        elif payload.keep_api_key:
+            # The client has no way to read the secret; keep whatever is stored.
+            pass
+
+    for pid, patch in (payload.providers or {}).items():
+        if pid not in PROVIDERS:
+            raise HTTPException(status_code=400, detail=f"Bilinmeyen saglayici: {pid}")
+        if patch.model is not None:
+            set_stored(db, f"ai.providers.{pid}.model", patch.model.strip() or None)
+        if patch.base_url is not None:
+            set_stored(db, f"ai.providers.{pid}.base_url", patch.base_url.strip() or None)
+        if patch.api_key is not None and not patch.keep_api_key:
+            set_stored(
+                db, f"ai.providers.{pid}.api_key",
+                patch.api_key.strip() or None, is_secret=True,
             )
     db.commit()
     return get_settings(db)

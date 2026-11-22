@@ -112,6 +112,7 @@ curl http://localhost:8000/api/health
 | Servis | Adres | Ne işe yarar |
 | --- | --- | --- |
 | **Frontend (Dashboard)** | http://localhost:3000 | Tarama arayüzü |
+| **Ayarlar** | http://localhost:3000/settings | AI sağlayıcı + API anahtarları, tarayıcı durumu |
 | **Backend API** | http://localhost:8000 | REST API |
 | **API Dokümantasyonu** | http://localhost:8000/docs | Swagger UI |
 | PostgreSQL | `localhost:5432` (iç ağ) | Veritabanı |
@@ -199,6 +200,21 @@ Tarama bitince **PDF İndir** / **JSON** butonları aktif olur.
 bulunur. Ayrıca iki taramayı seçip **Karşılaştır** derseniz yeni/giderilen
 bulguları ve risk değişimini gösterir.
 
+### Ayarlar sayfası
+
+Üst menüdeki **Ayarlar** (http://localhost:3000/settings) sayfası tek noktadan:
+
+- tüm AI sağlayıcılarını (OpenAI, Claude, Gemini, Grok, OpenRouter, DeepSeek,
+  Mistral, Groq, Ollama, Özel) listeler, model / uç nokta / API anahtarı
+  kaydeder,
+- kayıtlı anahtarla **Test Et** bağlantısı doğrular (model · gecikme · yankı),
+- son tamamlanan taramada **hangi AI motorunun** kullanıldığını gösterir,
+- subfinder / httpx / katana / nuclei binary'lerinin kurulu olup olmadığını
+  (kurulu değilse hangi yerleşik Python motorunun devreye girdiğini) gösterir.
+
+Anahtarlar yalnızca sunucuda tutulur; liste **maskeli** halde (`gsk_••••abcd`)
+gösterilir ve API yanıtında asla açık döndürülmez.
+
 ---
 
 ## 4. AI sağlayıcısı seçmek (OpenAI, Claude, Gemini, Grok, …)
@@ -260,6 +276,12 @@ curl http://localhost:8000/api/settings         # aktif seçim + maskeli anahtar
 curl -X PUT http://localhost:8000/api/settings \
   -H 'Content-Type: application/json' \
   -d '{"provider":"xai","api_key":"gsk_...","model":"grok-3"}'
+
+# Sağlayıcı başına ayrı ayrı yapılandırma (Ayarlar sayfası bunu kullanır);
+# keep_api_key=true ise kayıtlı anahtar korunur, boş api_key anahtarı temizler.
+curl -X PUT http://localhost:8000/api/settings \
+  -H 'Content-Type: application/json' \
+  -d '{"providers":{"xai":{"model":"grok-3","keep_api_key":true}}}'
 
 # Anahtari dogrula (kayitli konfigurasyonla deneme istegi)
 curl -X POST http://localhost:8000/api/providers/xai/test
@@ -405,6 +427,8 @@ curl -X POST http://localhost:8000/api/scans/1/report \
 | `OLLAMA_URL` | `http://ollama:11434` | Ollama adresi |
 | `DEMO_MODE` | `false` | Binary/hedef olmadan uçtan uca demo çalıştırır |
 | `SCANNER_TIMEOUT` | `1200` | Tarayıcılar için maksimum süre (sn) |
+| `SCAN_TIMEOUT_FAST` / `SCAN_TIMEOUT_DEEP` | `300` / `600` | Bir taramanın toplam süre bütçesi (sn); tüm aşamalar buna uyar |
+| `NUCLEI_TIMEOUT` | `300` | nuclei aşaması için süre sınırı (sn) |
 | `NUCLEI_SEVERITIES` | `critical,high,medium` | nuclei seviyeleri |
 | `DATABASE_URL` | `postgresql+psycopg2://…` | Compose otomatik ayarlar |
 | `REDIS_URL` | `redis://redis:6379/0` | Compose otomatik ayarlar |

@@ -178,6 +178,8 @@ def run(
         return [], EngineReport(engine="none", detail="canlı host yok")
     if ctx.settings.demo_mode:
         return [], EngineReport(engine="demo", detail="sentetik veri")
+    if ctx.expired():
+        return [], EngineReport(engine="timeout", detail="tarama süresi doldu")
 
     findings: List[VulnResult] = []
     checked = 0

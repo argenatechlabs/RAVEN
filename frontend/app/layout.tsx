@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { History, Radar, ShieldAlert } from "lucide-react";
+import { History, Radar, Settings2, ShieldAlert } from "lucide-react";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -35,6 +35,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-zinc-300 transition hover:bg-panel2 hover:text-neon"
               >
                 <History className="h-4 w-4" /> Geçmiş
+              </Link>
+              <Link
+                href="/settings"
+                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-zinc-300 transition hover:bg-panel2 hover:text-neon"
+              >
+                <Settings2 className="h-4 w-4" /> Ayarlar
               </Link>
             </nav>
             <span className="ml-auto hidden items-center gap-1.5 text-[11px] text-muted sm:flex">
