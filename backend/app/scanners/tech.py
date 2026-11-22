@@ -90,6 +90,8 @@ def _probe_python(subdomains: List[str], ctx: ScanContext) -> List[SubdomainResu
     results: List[SubdomainResult] = []
     try:
         for sub in subdomains:
+            if ctx.expired():
+                break
             for scheme in ("https", "http"):
                 url = f"{scheme}://{sub}"
                 resp = client.get(url)

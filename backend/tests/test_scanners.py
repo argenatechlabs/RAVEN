@@ -149,6 +149,7 @@ def test_builtin_vuln_engine_finds_exposed_files():
                     },
                 )(),
                 "deep": False,
+                "expired": staticmethod(lambda: False),
             },
         )()
         findings = _builtin_scan(alive, ctx, [])

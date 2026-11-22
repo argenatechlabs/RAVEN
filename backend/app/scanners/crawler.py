@@ -77,7 +77,7 @@ def _crawl_python(alive: List[SubdomainResult], ctx: ScanContext) -> List[Endpoi
         visited: set = set()
         # Bound the crawl so a busy target cannot run for the full timeout.
         budget = min(ctx.settings.max_endpoints, 800 if ctx.deep else 400)
-        while queue and len(visited) < budget:
+        while queue and len(visited) < budget and not ctx.expired():
             url, depth = queue.pop(0)
             if url in seen or url in visited:
                 continue

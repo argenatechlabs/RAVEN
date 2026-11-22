@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.ai.provider import resolve_provider
+from app.ai.provider import LocalProvider, resolve_provider
 from app.ai.reporter import generate_executive_summary
 from app.ai.triage import triage_findings
 from app.config import Settings
@@ -285,10 +285,18 @@ class ScanPipeline:
 
                 # 6) AI triage
                 self._progress(session, scan, "ai-triage")
-                provider = resolve_provider(
-                    self.settings, logger, db=session,
-                    provider_id=(scan.meta or {}).get("ai_provider"),
-                )
+                if ctx.expired():
+                    # The wall-clock budget is spent: keep the deterministic
+                    # analysis instead of paying for an LLM round-trip.
+                    logger.warning(
+                        "Tarama süresi doldu; AI triage atlanıyor (yerel analiz)"
+                    )
+                    provider = LocalProvider()
+                else:
+                    provider = resolve_provider(
+                        self.settings, logger, db=session,
+                        provider_id=(scan.meta or {}).get("ai_provider"),
+                    )
                 scan.meta = {
                     **(scan.meta or {}),
                     "ai": {"provider": provider.name, "model": provider.model},

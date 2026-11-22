@@ -757,12 +757,12 @@ def _with_param(url: str, name: str, value: str) -> str:
 
 def _parameter_checks(
     client, host: str, base: str, endpoints: Optional[List],
-    findings: List[VulnResult], budget: int,
+    findings: List[VulnResult], budget: int, ctx: ScanContext,
 ) -> None:
     candidates = _candidate_param_urls(endpoints, base)
     used = 0
     for url, name in candidates:
-        if used >= budget:
+        if used >= budget or ctx.expired():
             return
         for probe in _PARAM_PROBES:
             if used >= budget:
@@ -813,7 +813,7 @@ def _builtin_scan(
     max_findings = 500
     try:
         for host in alive[:max_hosts]:
-            if len(findings) >= max_findings:
+            if len(findings) >= max_findings or ctx.expired():
                 break
             base = f"https://{host.subdomain}"
             landing = client.get(base + "/")
@@ -823,7 +823,7 @@ def _builtin_scan(
 
             baseline = _catchall_baseline(client, base)
             for path, severity, name, desc, cvss, tags, matcher, require_200 in _SENSITIVE_PATHS:
-                if len(findings) >= max_findings:
+                if len(findings) >= max_findings or ctx.expired():
                     break
                 resp = client.get(base + path)
                 if resp is None:
@@ -852,7 +852,7 @@ def _builtin_scan(
             _behaviour_checks(client, host.subdomain, base, findings)
             _parameter_checks(
                 client, host.subdomain, base, endpoints, findings,
-                ctx.settings.builtin_param_budget,
+                ctx.settings.builtin_param_budget, ctx,
             )
 
         # Outdated JS libraries / tech across discovered endpoints.
